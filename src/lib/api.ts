@@ -67,7 +67,23 @@ export interface ImprovePromptRequest {
   post_id?: number;
 }
 
+// Pricing for Magic Wand
+const MAGIC_WAND_PRICE = 0.05; // $0.05 per improvement
+
 export async function improvePrompt(request: ImprovePromptRequest): Promise<string> {
+  // Check balance first via Supabase (same pattern as analyzeContentUrl)
+  const spendResult = await spendTokens(
+    request.user_id,
+    MAGIC_WAND_PRICE,
+    'Prompt improvement (Magic Wand)'
+  );
+
+  if (!spendResult.success) {
+    throw new Error(spendResult.error || 'Insufficient funds for prompt improvement');
+  }
+
+  console.log(`💰 Charged $${spendResult.charged} for Magic Wand`);
+
   const response = await fetch(MAGIC_WAND_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
