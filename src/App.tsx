@@ -59,13 +59,17 @@ function App() {
     isGeneratingText,
     isGeneratingImage,
     isImproving,
+    isPreparing,
     generatedText,
     generatedImage,
+    preparedData,
     error: generationError,
     handleGenerateText,
     handleGenerateImage,
+    handlePrepareImage,
     handleImprovePrompt,
     reset,
+    clearPreparedData,
   } = useGeneration({
     userId: user?.id || 0,
     tgChatId: user?.tg_chat_id || 0,
@@ -105,9 +109,20 @@ function App() {
     handleGenerateText(prompt);
   };
 
-  const handleGenImage = () => {
-    // Open the image generation modal instead of generating directly
-    setShowImageModal(true);
+  const handleGenImage = async () => {
+    if (!prompt.trim()) {
+      toast.error('Please enter a prompt first');
+      return;
+    }
+
+    // First, prepare image data (get AI-generated scene description and captions)
+    const prepared = await handlePrepareImage(prompt, user?.id);
+
+    if (prepared) {
+      // Open modal with prepared data
+      setShowImageModal(true);
+    }
+    // If preparation failed, error will be shown via generationError
   };
 
   const handleImageModalConfirm = (params: ImageGenerationParams) => {
@@ -118,6 +133,7 @@ function App() {
 
   const handleImageModalClose = () => {
     setShowImageModal(false);
+    clearPreparedData();
   };
 
   const handleReset = () => {
@@ -164,7 +180,7 @@ function App() {
     );
   }
 
-  const isGenerating = isGeneratingText || isGeneratingImage;
+  const isGenerating = isGeneratingText || isGeneratingImage || isPreparing;
 
   return (
     <div className="min-h-screen bg-background safe-area-top safe-area-bottom">
@@ -251,12 +267,18 @@ function App() {
                 variant="secondary"
                 className="flex-1"
               >
-                {isGeneratingImage ? (
+                {isPreparing || isGeneratingImage ? (
                   <Loader2 className="h-4 w-4 animate-spin mr-2" />
                 ) : (
                   <Image className="h-4 w-4 mr-2" />
                 )}
-                Generate Image
+                {isPreparing
+                  ? user?.language === 'ru'
+                    ? 'Подготовка...'
+                    : 'Preparing...'
+                  : user?.language === 'ru'
+                  ? 'Сгенерировать изображение'
+                  : 'Generate Image'}
               </Button>
             </div>
           </CardContent>
@@ -352,8 +374,8 @@ function App() {
         isOpen={showImageModal}
         onClose={handleImageModalClose}
         onConfirm={handleImageModalConfirm}
-        initialSceneDescription={prompt}
-        initialCaptions=""
+        initialSceneDescription={preparedData?.sceneDescription || prompt}
+        initialCaptions={preparedData?.captions || ''}
         language={user?.language || 'en'}
         isLoading={isGeneratingImage}
       />

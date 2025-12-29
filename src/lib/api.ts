@@ -73,8 +73,21 @@ export interface ImprovePromptRequest {
   post_id?: number;
 }
 
+export interface PrepareImageRequest {
+  prompt: string;
+  user_id: number;
+  generated_text?: string;
+}
+
+export interface PrepareImageResponse {
+  scene_description: string;
+  captions: string;
+}
+
 // Pricing for Magic Wand
 const MAGIC_WAND_PRICE = 0.05; // $0.05 per improvement
+// Pricing for image preparation (scene + captions generation via AI)
+const PREPARE_IMAGE_PRICE = 0.02; // $0.02 per preparation
 
 export async function improvePrompt(request: ImprovePromptRequest): Promise<string> {
   // Check balance first via Supabase (same pattern as analyzeContentUrl)
@@ -116,6 +129,63 @@ export async function generateText(request: GenerateTextRequest): Promise<{ text
   }
 
   return response.json();
+}
+
+// Prepare image generation - generates scene_description and captions via AI
+// Uses the same workflow with prepare_only=true flag
+export async function prepareImage(request: PrepareImageRequest): Promise<PrepareImageResponse> {
+  const userId = getUserId();
+  const effectiveUserId = (request.user_id && request.user_id > 0) ? request.user_id : userId;
+
+  if (!effectiveUserId || effectiveUserId <= 0) {
+    throw new Error('User not authenticated. Please reload the app.');
+  }
+
+  // Check balance and charge for preparation
+  const spendResult = await spendTokens(
+    effectiveUserId,
+    PREPARE_IMAGE_PRICE,
+    'Image preparation (scene + captions)'
+  );
+
+  if (!spendResult.success) {
+    throw new Error(spendResult.error || 'Insufficient funds for image preparation');
+  }
+
+  console.log(`💰 Charged $${spendResult.charged} for image preparation`);
+
+  // Add current date for context
+  const now = new Date();
+  const currentDate = now.toLocaleDateString('ru-RU', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+
+  const response = await fetch(GENERATE_IMAGE_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      prompt: request.prompt,
+      user_id: effectiveUserId,
+      generated_text: request.generated_text || '',
+      current_date: currentDate,
+      prepare_only: true, // This flag tells workflow to return scene + captions without generating image
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error('[prepareImage] Error response:', errorText);
+    throw new Error('Failed to prepare image');
+  }
+
+  const data = await response.json();
+
+  return {
+    scene_description: data.scene_description || request.prompt,
+    captions: data.captions || '',
+  };
 }
 
 // Pricing for Image Generation

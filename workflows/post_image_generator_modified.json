@@ -1,0 +1,606 @@
+{
+  "name": "Post Image Generator",
+  "nodes": [
+    {
+      "id": "webhook-1",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        240,
+        300
+      ],
+      "webhookId": "post-gen-img-v2-2025",
+      "parameters": {
+        "path": "post-generate-image-v2",
+        "httpMethod": "POST",
+        "responseMode": "responseNode",
+        "options": {}
+      }
+    },
+    {
+      "id": "get-user-1",
+      "name": "Get User Data",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        780,
+        460
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "FMw8swyCIDf0EHxe",
+          "name": "Supabase OS"
+        }
+      },
+      "parameters": {
+        "operation": "get",
+        "tableId": "user_data",
+        "filterType": "manual",
+        "matchType": "matchOne",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "keyValue": "={{ $json.user_id }}"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "code-1",
+      "name": "Prepare Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1000,
+        300
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const webhookData = $('Webhook').first().json;\nconst userData = $('Get User Data').first().json;\n\n// Use current_date from request body, or fallback to generating it here\nconst currentDate = webhookData.body?.current_date || new Date().toLocaleDateString('ru-RU', {\n    day: 'numeric',\n    month: 'long',\n    year: 'numeric'\n});\n\nconst prompt = webhookData.body?.prompt || '';\nconst generatedText = webhookData.body?.generated_text || '';\nconst aspectRatio = webhookData.body?.aspect_ratio || '1:1';\nconst stylePrompt = webhookData.body?.style_prompt || '';\n\nconst fullPrompt = `Create an image based on:\n\n**Current date:** ${currentDate}\n\n**User prompt:** ${prompt}\n\n**Post text:** ${generatedText}\n\n**Brand context:**\n- Brand: ${userData.brand || 'not specified'}\n- Target audience: ${userData.target_audience || 'not specified'}\n- Tone: ${userData.tone_of_voice || 'not specified'}\n\nCreate a visually compelling scene description. Output as JSON with scene_description and captions fields.`;\n\nreturn { \n  prompt: fullPrompt, \n  user_id: webhookData.body?.user_id,\n  aspect_ratio: aspectRatio,\n  style_prompt: stylePrompt,\n  prepare_only: webhookData.body?.prepare_only || false\n};"
+      }
+    },
+    {
+      "id": "ai-agent-1",
+      "name": "Scene Description Creator",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.6,
+      "position": [
+        1220,
+        300
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.prompt }}",
+        "options": {
+          "systemMessage": "You are an image scene description creator. \n\nOUTPUT FORMAT: You MUST respond with a valid JSON object only, no other text:\n{\n  \"scene_description\": \"Detailed visual scene description in English, max 800 characters. Focus on: composition, lighting, colors, mood, style, visual elements.\",\n  \"captions\": \"Text/inscriptions that should appear ON the image (greetings, titles, year numbers, labels). Leave empty string if no text needed on image.\"\n}\n\nIMPORTANT:\n- scene_description: Describe WHAT TO SHOW visually (people, objects, background, lighting, style)\n- captions: ONLY text that should be RENDERED on the image itself (like \"Happy New Year 2025\")\n- Do NOT include captions in scene_description\n- Response must be valid JSON only"
+        }
+      }
+    },
+    {
+      "id": "openai-model-1",
+      "name": "OpenAI Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1,
+      "position": [
+        1220,
+        500
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "ABbioYmlsl4KQZRt",
+          "name": "OS Models"
+        }
+      },
+      "parameters": {
+        "model": "gpt-4o-mini",
+        "options": {}
+      }
+    },
+    {
+      "id": "gemini-1",
+      "name": "Generate Image (Gemini)",
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1,
+      "position": [
+        1660,
+        400
+      ],
+      "credentials": {
+        "googlePalmApi": {
+          "id": "D9yZ53u8unGkXaR7",
+          "name": "orangespace.io@gmail.com - Gemini Api"
+        }
+      },
+      "parameters": {
+        "resource": "image",
+        "modelId": {
+          "__rl": true,
+          "value": "models/gemini-2.5-flash-image",
+          "mode": "list",
+          "cachedResultName": "models/gemini-2.5-flash-image (Nano Banana)"
+        },
+        "prompt": "={{ $json.output }}",
+        "options": {
+          "sampleCount": 1
+        }
+      },
+      "onError": "continueErrorOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "id": "upload-1",
+      "name": "Upload to Storage",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        2100,
+        400
+      ],
+      "credentials": {
+        "httpCustomAuth": {
+          "id": "5zxl8XAnEsnTCLdT",
+          "name": "Supabase Storage Auth"
+        }
+      },
+      "parameters": {
+        "method": "POST",
+        "url": "=https://supabase.orangespace.io/storage/v1/object/carusel/post-{{ $('Prepare Prompt').item.json.user_id + \"-\" + new Date().getTime() + \".png\" }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "={{$binary.data.mimeType}}"
+            },
+            {
+              "name": "x-upsert",
+              "value": "true"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "binaryData",
+        "inputDataFieldName": "data",
+        "options": {}
+      }
+    },
+    {
+      "id": "respond-1",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        2320,
+        400
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({\n  success: true,\n  image_url: \"https://supabase.orangespace.io/storage/v1/object/public/\" + $json.Key,\n  scene_description: $('Scene Description Creator').item.json.output\n}) }}"
+      }
+    },
+    {
+      "id": "validate-input-1",
+      "name": "Validate Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        350,
+        300
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const body = $json.body || {};\nconst userId = body.user_id;\n\nif (!userId || userId === 'undefined' || userId === undefined) {\n    throw new Error('Missing or invalid user_id. Please reload the app.');\n}\n\nreturn {\n    body: body,\n    user_id: parseInt(String(userId), 10)\n};"
+      }
+    },
+    {
+      "id": "telegram-photo-1",
+      "name": "Send Photo to Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2320,
+        600
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "izaneuZqtIsnGgLA",
+          "name": "@os_factory_bot"
+        }
+      },
+      "parameters": {
+        "operation": "sendPhoto",
+        "chatId": "={{ $('Get User Data').item.json.tg_chat_id }}",
+        "file": "={{ 'https://supabase.orangespace.io/storage/v1/object/public/' + $json.Key }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "update-post-1",
+      "name": "Update Post",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        2760,
+        400
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "FMw8swyCIDf0EHxe",
+          "name": "Supabase OS"
+        }
+      },
+      "parameters": {
+        "operation": "update",
+        "tableId": "posts",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "keyValue": "={{ $('Webhook').item.json.body.post_id }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldName": "generated_image_url",
+              "fieldValue": "={{ 'https://supabase.orangespace.io/storage/v1/object/public/' + $('Upload to Storage').item.json.Key }}"
+            },
+            {
+              "fieldName": "status",
+              "fieldValue": "image_generated"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "if-post-id-1",
+      "name": "Has post_id?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2540,
+        400
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "post-id-check",
+              "leftValue": "={{ $('Webhook').item.json.body.post_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "number",
+                "operation": "exists"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "validate-image-1",
+      "name": "Validate Image Size",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1880,
+        400
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// Check if Gemini returned valid image data\nconst binaryData = $input.first().binary;\n\nif (!binaryData || !binaryData.data) {\n  throw new Error('No image data received from Gemini');\n}\n\n// Check file size (should be > 0)\nconst fileSize = $input.first().json.fileSize;\nif (fileSize === '0 B' || fileSize === '0' || !fileSize) {\n  throw new Error('Gemini returned empty image (0 bytes). Please retry.');\n}\n\n// Pass through the data\nreturn $input.all();"
+      }
+    },
+    {
+      "id": "84dfa81d-b9a7-49a7-834d-34ca12cbf42f",
+      "name": "Parse Scene Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        300
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// Parse AI agent output (structured JSON)\nconst agentOutput = $('Scene Description Creator').first().json.output || $('Scene Description Creator').first().json.text || '';\nconst webhookData = $('Webhook').first().json;\n\nlet scene_description = '';\nlet captions = '';\n\ntry {\n  // Try to parse as JSON\n  const parsed = JSON.parse(agentOutput);\n  scene_description = parsed.scene_description || '';\n  captions = parsed.captions || '';\n} catch (e) {\n  // Fallback: use entire output as scene_description\n  scene_description = agentOutput;\n  captions = '';\n}\n\nreturn {\n  scene_description,\n  captions,\n  user_id: webhookData.body?.user_id,\n  prompt: webhookData.body?.prompt,\n  prepare_only: webhookData.body?.prepare_only || false\n};"
+      }
+    },
+    {
+      "id": "aac2e1da-646a-4524-a190-9c20323005d3",
+      "name": "Is Prepare Only?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1440,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "82b07235-67ce-4679-a6cc-b82fcc8b3849",
+              "leftValue": "={{ $json.prepare_only }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "f0787da2-bdd5-433f-a6b3-d60ce71f66f1",
+      "name": "Respond Prepare Only",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1660,
+        200
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ scene_description: $json.scene_description, captions: $json.captions }) }}"
+      }
+    },
+    {
+      "id": "247b0ce2-793f-4bc9-8356-51bf5689aede",
+      "name": "Has Ready Scene?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        460,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "6b6bb9c4-3fa7-4631-87d0-35e9582c2cf4",
+              "leftValue": "={{ $('Webhook').first().json.body?.scene_description }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "341cc4f1-192b-46f9-b312-920051738ef7",
+      "name": "Use Ready Scene",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        680,
+        140
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// Use pre-generated scene from user\nconst webhookData = $('Webhook').first().json;\nconst body = webhookData.body || {};\n\nreturn {\n  scene_description: body.scene_description || '',\n  captions: body.captions || '',\n  aspect_ratio: body.aspect_ratio || '1:1',\n  style_id: body.style_id || 'realistic',\n  style_prompt: body.style_prompt || '',\n  user_id: body.user_id,\n  tg_chat_id: body.tg_chat_id || body.user_id,\n  prompt: body.prompt\n};"
+      }
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Validate Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Input": {
+      "main": [
+        [
+          {
+            "node": "Has Ready Scene?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Ready Scene?": {
+      "main": [
+        [
+          {
+            "node": "Use Ready Scene",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get User Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Use Ready Scene": {
+      "main": [
+        [
+          {
+            "node": "Generate Image (Gemini)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get User Data": {
+      "main": [
+        [
+          {
+            "node": "Prepare Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Prompt": {
+      "main": [
+        [
+          {
+            "node": "Scene Description Creator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Scene Description Creator",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Scene Description Creator": {
+      "main": [
+        [
+          {
+            "node": "Parse Scene Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Scene Output": {
+      "main": [
+        [
+          {
+            "node": "Is Prepare Only?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Prepare Only?": {
+      "main": [
+        [
+          {
+            "node": "Respond Prepare Only",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Generate Image (Gemini)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Image (Gemini)": {
+      "main": [
+        [
+          {
+            "node": "Validate Image Size",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Image Size": {
+      "main": [
+        [
+          {
+            "node": "Upload to Storage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload to Storage": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send Photo to Telegram",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Has post_id?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has post_id?": {
+      "main": [
+        [
+          {
+            "node": "Update Post",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

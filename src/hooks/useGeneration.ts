@@ -1,6 +1,11 @@
 import { useState, useCallback } from 'react';
-import { generateText, generateImage, improvePrompt } from '@/lib/api';
+import { generateText, generateImage, improvePrompt, prepareImage } from '@/lib/api';
 import { IMAGE_STYLES, type ImageGenerationParams } from '@/types';
+
+export interface PreparedImageData {
+  sceneDescription: string;
+  captions: string;
+}
 
 interface UseGenerationOptions {
   userId: number;
@@ -12,8 +17,10 @@ export function useGeneration({ userId, tgChatId, postId }: UseGenerationOptions
   const [isGeneratingText, setIsGeneratingText] = useState(false);
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const [isImproving, setIsImproving] = useState(false);
+  const [isPreparing, setIsPreparing] = useState(false);
   const [generatedText, setGeneratedText] = useState<string | null>(null);
   const [generatedImage, setGeneratedImage] = useState<string | null>(null);
+  const [preparedData, setPreparedData] = useState<PreparedImageData | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const handleGenerateText = useCallback(async (prompt: string) => {
@@ -102,6 +109,49 @@ export function useGeneration({ userId, tgChatId, postId }: UseGenerationOptions
     }
   }, [userId, tgChatId, postId, generatedText]);
 
+  // Prepare image - generates scene_description and captions via AI
+  const handlePrepareImage = useCallback(async (
+    prompt: string,
+    currentUserId?: number
+  ): Promise<PreparedImageData | null> => {
+    const effectiveUserId = currentUserId || userId;
+
+    if (!prompt.trim()) {
+      setError('Please enter a prompt');
+      return null;
+    }
+
+    if (!effectiveUserId || effectiveUserId <= 0) {
+      setError('User not loaded. Please reload the app.');
+      return null;
+    }
+
+    setIsPreparing(true);
+    setError(null);
+
+    try {
+      const result = await prepareImage({
+        prompt,
+        user_id: effectiveUserId,
+        generated_text: generatedText || '',
+      });
+
+      const prepared: PreparedImageData = {
+        sceneDescription: result.scene_description,
+        captions: result.captions,
+      };
+
+      setPreparedData(prepared);
+      return prepared;
+    } catch (err) {
+      console.error('Error preparing image:', err);
+      setError('Failed to prepare image. Please try again.');
+      return null;
+    } finally {
+      setIsPreparing(false);
+    }
+  }, [userId, generatedText]);
+
   const handleImprovePrompt = useCallback(async (prompt: string): Promise<string> => {
     if (!prompt.trim()) {
       return prompt;
@@ -129,19 +179,28 @@ export function useGeneration({ userId, tgChatId, postId }: UseGenerationOptions
   const reset = useCallback(() => {
     setGeneratedText(null);
     setGeneratedImage(null);
+    setPreparedData(null);
     setError(null);
+  }, []);
+
+  const clearPreparedData = useCallback(() => {
+    setPreparedData(null);
   }, []);
 
   return {
     isGeneratingText,
     isGeneratingImage,
     isImproving,
+    isPreparing,
     generatedText,
     generatedImage,
+    preparedData,
     error,
     handleGenerateText,
     handleGenerateImage,
+    handlePrepareImage,
     handleImprovePrompt,
     reset,
+    clearPreparedData,
   };
 }
