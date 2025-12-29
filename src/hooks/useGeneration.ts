@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { generateText, generateImage, improvePrompt } from '@/lib/api';
+import { IMAGE_STYLES, type ImageGenerationParams } from '@/types';
 
 interface UseGenerationOptions {
   userId: number;
@@ -40,7 +41,12 @@ export function useGeneration({ userId, tgChatId, postId }: UseGenerationOptions
     }
   }, [userId, tgChatId, postId]);
 
-  const handleGenerateImage = useCallback(async (prompt: string, currentUserId?: number, currentTgChatId?: number) => {
+  const handleGenerateImage = useCallback(async (
+    prompt: string,
+    currentUserId?: number,
+    currentTgChatId?: number,
+    modalParams?: ImageGenerationParams
+  ) => {
     // Use passed values or fall back to hook values
     const effectiveUserId = currentUserId || userId;
     const effectiveTgChatId = currentTgChatId || tgChatId;
@@ -63,13 +69,30 @@ export function useGeneration({ userId, tgChatId, postId }: UseGenerationOptions
     setError(null);
 
     try {
-      const result = await generateImage({
+      // Build request with optional modal parameters
+      const requestParams: Parameters<typeof generateImage>[0] = {
         prompt,
         user_id: effectiveUserId,
         tg_chat_id: effectiveTgChatId,
         post_id: postId || undefined,
         generated_text: generatedText || '',
-      });
+      };
+
+      // Add modal parameters if provided
+      if (modalParams) {
+        requestParams.scene_description = modalParams.sceneDescription;
+        requestParams.captions = modalParams.captions || undefined;
+        requestParams.aspect_ratio = modalParams.aspectRatio;
+        requestParams.style_id = modalParams.styleId;
+
+        // Find and add style prompt
+        const selectedStyle = IMAGE_STYLES.find((s) => s.id === modalParams.styleId);
+        if (selectedStyle) {
+          requestParams.style_prompt = selectedStyle.prompt;
+        }
+      }
+
+      const result = await generateImage(requestParams);
       setGeneratedImage(result.image_url);
     } catch (err) {
       console.error('Error generating image:', err);

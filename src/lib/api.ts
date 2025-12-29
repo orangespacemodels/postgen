@@ -59,6 +59,12 @@ export interface GenerateImageRequest {
   tg_chat_id: number;
   post_id?: number;
   generated_text?: string;
+  // New parameters for image generation modal
+  scene_description?: string;
+  captions?: string;
+  aspect_ratio?: '16:9' | '1:1' | '9:16';
+  style_id?: string;
+  style_prompt?: string;
 }
 
 export interface ImprovePromptRequest {
@@ -152,15 +158,35 @@ export async function generateImage(request: GenerateImageRequest): Promise<{ im
     year: 'numeric',
   });
 
+  // Build request payload with new modal parameters
+  const payload: Record<string, unknown> = {
+    prompt: request.prompt,
+    user_id: effectiveUserId,
+    generated_text: request.generated_text || '',
+    current_date: currentDate,
+  };
+
+  // Add optional modal parameters if provided
+  if (request.scene_description) {
+    payload.scene_description = request.scene_description;
+  }
+  if (request.captions) {
+    payload.captions = request.captions;
+  }
+  if (request.aspect_ratio) {
+    payload.aspect_ratio = request.aspect_ratio;
+  }
+  if (request.style_id) {
+    payload.style_id = request.style_id;
+  }
+  if (request.style_prompt) {
+    payload.style_prompt = request.style_prompt;
+  }
+
   const response = await fetch(GENERATE_IMAGE_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      prompt: request.prompt,
-      user_id: effectiveUserId,
-      generated_text: (request as any).generated_text || '',
-      current_date: currentDate,
-    }),
+    body: JSON.stringify(payload),
   });
 
   if (!response.ok) {

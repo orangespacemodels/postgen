@@ -78,3 +78,97 @@ export const PRICING = {
   TEXT_GENERATION: 0.10,    // $0.10 per 1000 words
   IMAGE_GENERATION: 0.10,   // $0.10 per image up to 1024p
 } as const;
+
+// Image aspect ratios
+export type AspectRatio = '16:9' | '1:1' | '9:16';
+
+export const ASPECT_RATIOS: { value: AspectRatio; labelRu: string; labelEn: string }[] = [
+  { value: '16:9', labelRu: 'Горизонтальный (16:9)', labelEn: 'Landscape (16:9)' },
+  { value: '1:1', labelRu: 'Квадратный (1:1)', labelEn: 'Square (1:1)' },
+  { value: '9:16', labelRu: 'Вертикальный (9:16)', labelEn: 'Portrait (9:16)' },
+];
+
+// Image generation styles
+export interface ImageStyle {
+  id: string;
+  nameRu: string;
+  nameEn: string;
+  descriptionRu: string;
+  descriptionEn: string;
+  prompt: string; // Style prompt to append to generation
+}
+
+export const IMAGE_STYLES: ImageStyle[] = [
+  {
+    id: 'realistic',
+    nameRu: 'Реалистичный',
+    nameEn: 'Realistic',
+    descriptionRu: 'Фотореалистичное изображение с естественным освещением',
+    descriptionEn: 'Photorealistic image with natural lighting',
+    prompt: 'photorealistic, high quality photography, natural lighting, detailed',
+  },
+  {
+    id: 'digital-art',
+    nameRu: 'Цифровое искусство',
+    nameEn: 'Digital Art',
+    descriptionRu: 'Современная цифровая иллюстрация',
+    descriptionEn: 'Modern digital illustration',
+    prompt: 'digital art, illustration, vibrant colors, modern style',
+  },
+  {
+    id: 'minimalist',
+    nameRu: 'Минимализм',
+    nameEn: 'Minimalist',
+    descriptionRu: 'Чистый минималистичный дизайн',
+    descriptionEn: 'Clean minimalist design',
+    prompt: 'minimalist, clean design, simple shapes, lots of white space',
+  },
+  {
+    id: '3d-render',
+    nameRu: '3D рендер',
+    nameEn: '3D Render',
+    descriptionRu: 'Трёхмерная графика с объёмом',
+    descriptionEn: '3D rendered graphics with depth',
+    prompt: '3D render, volumetric lighting, depth of field, professional rendering',
+  },
+  {
+    id: 'watercolor',
+    nameRu: 'Акварель',
+    nameEn: 'Watercolor',
+    descriptionRu: 'Мягкие акварельные текстуры',
+    descriptionEn: 'Soft watercolor textures',
+    prompt: 'watercolor painting style, soft edges, artistic, fluid colors',
+  },
+  {
+    id: 'cartoon',
+    nameRu: 'Мультяшный',
+    nameEn: 'Cartoon',
+    descriptionRu: 'Яркий мультипликационный стиль',
+    descriptionEn: 'Bright cartoon style',
+    prompt: 'cartoon style, bold outlines, bright colors, fun and playful',
+  },
+  {
+    id: 'cinematic',
+    nameRu: 'Кинематографичный',
+    nameEn: 'Cinematic',
+    descriptionRu: 'Эпичная кинематографическая атмосфера',
+    descriptionEn: 'Epic cinematic atmosphere',
+    prompt: 'cinematic, movie still, dramatic lighting, epic composition, film grain',
+  },
+  {
+    id: 'flat-design',
+    nameRu: 'Плоский дизайн',
+    nameEn: 'Flat Design',
+    descriptionRu: 'Современный плоский дизайн для UI/маркетинга',
+    descriptionEn: 'Modern flat design for UI/marketing',
+    prompt: 'flat design, vector style, simple geometric shapes, modern colors',
+  },
+];
+
+// Image generation modal parameters
+export interface ImageGenerationParams {
+  sceneDescription: string;
+  captions: string;
+  aspectRatio: AspectRatio;
+  styleId: string;
+}

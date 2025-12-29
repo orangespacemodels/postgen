@@ -10,8 +10,9 @@ import { useContentAnalysis } from '@/hooks/useContentAnalysis';
 import { useSession } from '@/hooks/useSession';
 import { ContentAnalyzer } from '@/components/ContentAnalyzer';
 import { AnalysisModal } from '@/components/AnalysisModal';
+import { ImageGenerationModal } from '@/components/ImageGenerationModal';
 import { Mic, MicOff, Wand2, FileText, Image, Loader2, Send, Coins } from 'lucide-react';
-import { PRICING } from '@/types';
+import { PRICING, type ImageGenerationParams } from '@/types';
 
 // Simple markdown to HTML converter for basic formatting
 function formatMarkdown(text: string): string {
@@ -33,6 +34,7 @@ function formatMarkdown(text: string): string {
 function App() {
   const { user, loading: userLoading, error: userError } = useUser();
   const [prompt, setPrompt] = useState('');
+  const [showImageModal, setShowImageModal] = useState(false);
 
   // Session management - creates a post record for this session
   const {
@@ -104,8 +106,18 @@ function App() {
   };
 
   const handleGenImage = () => {
-    // Pass current user values directly to avoid stale closure issues
-    handleGenerateImage(prompt, user?.id, user?.tg_chat_id);
+    // Open the image generation modal instead of generating directly
+    setShowImageModal(true);
+  };
+
+  const handleImageModalConfirm = (params: ImageGenerationParams) => {
+    // Close modal and start generation with modal parameters
+    setShowImageModal(false);
+    handleGenerateImage(prompt, user?.id, user?.tg_chat_id, params);
+  };
+
+  const handleImageModalClose = () => {
+    setShowImageModal(false);
   };
 
   const handleReset = () => {
@@ -333,6 +345,17 @@ function App() {
         estimatedCost={getEstimatedCost()}
         userUnits={user?.units || 0}
         language={user?.language || 'en'}
+      />
+
+      {/* Image Generation Modal */}
+      <ImageGenerationModal
+        isOpen={showImageModal}
+        onClose={handleImageModalClose}
+        onConfirm={handleImageModalConfirm}
+        initialSceneDescription={prompt}
+        initialCaptions=""
+        language={user?.language || 'en'}
+        isLoading={isGeneratingImage}
       />
 
       <Toaster />
