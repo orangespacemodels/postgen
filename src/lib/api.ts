@@ -233,16 +233,19 @@ export async function checkBalance(userId: number): Promise<number> {
 // Spend tokens using n8n workflow "transactions: spend"
 // FIRE-AND-FORGET: Don't wait for response, just trigger the workflow
 // Balance check is done separately via Supabase before calling this
+// Uses mode: 'no-cors' to bypass CORS restrictions (we don't need the response)
 // =====================================================
 export function spendTokensAsync(
   userId: number,
   amountUsd: number,
   comment: string
 ): void {
-  // Fire-and-forget: don't await, just send the request
+  // Fire-and-forget with no-cors mode - we don't need the response
+  // This bypasses CORS preflight since we're not reading the response
   fetch(SPEND_WEBHOOK_URL, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    mode: 'no-cors', // Bypass CORS - response will be opaque but request goes through
+    headers: { 'Content-Type': 'text/plain' }, // Use text/plain to avoid preflight
     body: JSON.stringify({
       user_id: userId,
       amount_usd: amountUsd,
