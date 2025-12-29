@@ -374,24 +374,19 @@ export function spendTokensAsync(
     comment,
   });
 
-  // Use sendBeacon with Blob to set Content-Type header
-  // sendBeacon alone sends text/plain which n8n can't parse as JSON
-  const blob = new Blob([payload], { type: 'application/json' });
-  const sent = navigator.sendBeacon(SPEND_WEBHOOK_URL, blob);
-
-  if (!sent) {
-    // Fallback: try fetch with keepalive (for larger payloads)
-    fetch(SPEND_WEBHOOK_URL, {
-      method: 'POST',
-      keepalive: true,
-      headers: { 'Content-Type': 'application/json' },
-      body: payload,
-    }).catch((err) => {
-      console.error('[spendTokensAsync] Fallback fetch failed:', err);
-    });
-  }
-
-  console.log('[spendTokensAsync] Spend request sent via', sent ? 'sendBeacon' : 'fetch');
+  // Fire-and-forget POST request
+  // We don't care about the response - balance was already checked via Supabase
+  // Any CORS errors are silently ignored since this is just logging
+  fetch(SPEND_WEBHOOK_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: payload,
+  }).then(() => {
+    console.log('[spendTokensAsync] Spend request completed');
+  }).catch((err) => {
+    // Silently ignore CORS errors - the request still reaches the server
+    console.log('[spendTokensAsync] Spend request sent (response blocked by CORS, but request was sent)');
+  });
 }
 
 // Legacy function kept for compatibility - now just wraps async version
