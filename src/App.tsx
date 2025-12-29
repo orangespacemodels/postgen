@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import { Toaster, toast } from '@/components/ui/sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -13,6 +13,7 @@ import { AnalysisModal } from '@/components/AnalysisModal';
 import { ImageGenerationModal } from '@/components/ImageGenerationModal';
 import { Mic, MicOff, Wand2, FileText, Image, Loader2, Send, Coins } from 'lucide-react';
 import { PRICING, type ImageGenerationParams } from '@/types';
+import { translations, type Language } from '@/lib/i18n';
 
 // Simple markdown to HTML converter for basic formatting
 function formatMarkdown(text: string): string {
@@ -36,6 +37,17 @@ function App() {
   const [prompt, setPrompt] = useState('');
   const [showImageModal, setShowImageModal] = useState(false);
 
+  // Get language with fallback to Russian
+  const lang: Language = (user?.language === 'en' ? 'en' : 'ru');
+  const t = (key: keyof typeof translations) => {
+    const translation = translations[key];
+    if (typeof translation === 'object' && lang in translation) {
+      const value = translation[lang as keyof typeof translation];
+      if (typeof value === 'string') return value;
+    }
+    return key;
+  };
+
   // Session management - creates a post record for this session
   const {
     session,
@@ -48,10 +60,10 @@ function App() {
   });
 
   const { isListening, toggleListening } = useVoiceInput({
-    language: user?.language === 'ru' ? 'ru-RU' : 'en-US',
+    language: lang === 'ru' ? 'ru-RU' : 'en-US',
     onTranscript: (text) => {
       setPrompt((prev) => prev + ' ' + text);
-      toast.success('Voice transcribed');
+      toast.success(t('voiceTranscribed'));
     },
   });
 
@@ -97,12 +109,12 @@ function App() {
 
   const handleMagicWand = async () => {
     if (!prompt.trim()) {
-      toast.error('Please enter a prompt first');
+      toast.error(t('enterPromptFirst'));
       return;
     }
     const improved = await handleImprovePrompt(prompt);
     setPrompt(improved);
-    toast.success('Prompt improved!');
+    toast.success(t('promptImproved'));
   };
 
   const handleGenText = () => {
@@ -111,7 +123,7 @@ function App() {
 
   const handleGenImage = async () => {
     if (!prompt.trim()) {
-      toast.error('Please enter a prompt first');
+      toast.error(t('enterPromptFirst'));
       return;
     }
 
@@ -145,11 +157,7 @@ function App() {
   // Handle analysis confirmation with toast notification
   const onAnalysisConfirm = (selectedOptions: string[]) => {
     handleConfirmOptions(selectedOptions as any);
-    toast.success(
-      user?.language === 'ru'
-        ? 'Контекст добавлен в генерацию'
-        : 'Context added to generation'
-    );
+    toast.success(t('contextAdded'));
   };
 
   // Loading state
@@ -158,7 +166,7 @@ function App() {
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-4">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          <p className="text-muted-foreground">Loading...</p>
+          <p className="text-muted-foreground">{t('loading')}</p>
         </div>
       </div>
     );
@@ -172,7 +180,7 @@ function App() {
           <CardContent className="pt-6">
             <p className="text-destructive text-center">{userError}</p>
             <p className="text-muted-foreground text-sm text-center mt-2">
-              Please open this app from Telegram bot
+              {t('openFromTelegram')}
             </p>
           </CardContent>
         </Card>
@@ -187,7 +195,7 @@ function App() {
       <div className="container max-w-lg mx-auto px-4 py-6 space-y-6">
         {/* Header with balance */}
         <div className="flex items-center justify-between">
-          <h1 className="text-xl font-bold text-foreground">Post Generator</h1>
+          <h1 className="text-xl font-bold text-foreground">{t('appTitle')}</h1>
           <div className="flex items-center gap-2 text-sm">
             <Coins className="h-4 w-4 text-primary" />
             <span className="text-muted-foreground">${(user?.units || 0).toFixed(2)}</span>
@@ -202,14 +210,14 @@ function App() {
           onAnalyzeUrl={handleAnalyzeUrl}
           onAnalyzeFile={handleAnalyzeFile}
           onClearContext={clearAnalysisContext}
-          language={user?.language || 'en'}
+          language={lang}
           disabled={isGenerating}
         />
 
         {/* Prompt Input Card */}
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-lg">Enter your prompt</CardTitle>
+            <CardTitle className="text-lg">{t('enterPrompt')}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             {/* Textarea with voice button */}
@@ -217,7 +225,7 @@ function App() {
               <Textarea
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
-                placeholder="Describe what you want to generate..."
+                placeholder={t('promptPlaceholder')}
                 className="min-h-[120px] pr-12 resize-none"
                 disabled={isGenerating}
               />
@@ -244,7 +252,7 @@ function App() {
               ) : (
                 <Wand2 className="h-4 w-4 mr-2" />
               )}
-              Improve Prompt
+              {t('improvePrompt')}
             </Button>
 
             {/* Generate Buttons */}
@@ -259,7 +267,7 @@ function App() {
                 ) : (
                   <FileText className="h-4 w-4 mr-2" />
                 )}
-                Generate Text
+                {t('generateText')}
               </Button>
               <Button
                 onClick={handleGenImage}
@@ -272,13 +280,7 @@ function App() {
                 ) : (
                   <Image className="h-4 w-4 mr-2" />
                 )}
-                {isPreparing
-                  ? user?.language === 'ru'
-                    ? 'Подготовка...'
-                    : 'Preparing...'
-                  : user?.language === 'ru'
-                  ? 'Сгенерировать изображение'
-                  : 'Generate Image'}
+                {isPreparing ? t('preparing') : t('generateImage')}
               </Button>
             </div>
           </CardContent>
@@ -298,16 +300,16 @@ function App() {
           <Card>
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-lg">Result</CardTitle>
+                <CardTitle className="text-lg">{t('result')}</CardTitle>
                 <Button variant="ghost" size="sm" onClick={handleReset}>
-                  Clear
+                  {t('clear')}
                 </Button>
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
               {generatedText && (
                 <div className="space-y-2">
-                  <p className="text-sm font-medium text-muted-foreground">Generated Text:</p>
+                  <p className="text-sm font-medium text-muted-foreground">{t('generatedText')}</p>
                   <div className="p-3 bg-secondary rounded-lg">
                     <div
                       className="text-sm prose prose-sm prose-invert max-w-none"
@@ -319,7 +321,7 @@ function App() {
 
               {generatedImage && (
                 <div className="space-y-2">
-                  <p className="text-sm font-medium text-muted-foreground">Generated Image:</p>
+                  <p className="text-sm font-medium text-muted-foreground">{t('generatedImage')}</p>
                   <div className="rounded-lg overflow-hidden">
                     <img
                       src={generatedImage}
@@ -333,7 +335,7 @@ function App() {
               {/* Sent to Telegram indicator */}
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Send className="h-4 w-4" />
-                <span>Sent to Telegram</span>
+                <span>{t('sentToTelegram')}</span>
               </div>
             </CardContent>
           </Card>
@@ -341,16 +343,14 @@ function App() {
 
         {/* Pricing Info Footer */}
         <div className="text-xs text-muted-foreground text-center space-y-1">
+          <p>{t('pricing')}</p>
           <p>
-            {user?.language === 'ru' ? 'Тарифы:' : 'Pricing:'}
-          </p>
-          <p>
-            {user?.language === 'ru'
+            {lang === 'ru'
               ? `Текст: $${PRICING.TEXT_GENERATION}/1000 слов • Изображение: $${PRICING.IMAGE_GENERATION}`
               : `Text: $${PRICING.TEXT_GENERATION}/1000 words • Image: $${PRICING.IMAGE_GENERATION}`}
           </p>
           <p>
-            {user?.language === 'ru'
+            {lang === 'ru'
               ? `Анализ: пост $${PRICING.POST_ANALYSIS} • фото $${PRICING.PHOTO_ANALYSIS} • видео $${PRICING.VIDEO_ANALYSIS}/мин`
               : `Analysis: post $${PRICING.POST_ANALYSIS} • photo $${PRICING.PHOTO_ANALYSIS} • video $${PRICING.VIDEO_ANALYSIS}/min`}
           </p>
@@ -366,7 +366,7 @@ function App() {
         sourceType={sourceType}
         estimatedCost={getEstimatedCost()}
         userUnits={user?.units || 0}
-        language={user?.language || 'en'}
+        language={lang}
       />
 
       {/* Image Generation Modal */}
@@ -376,7 +376,7 @@ function App() {
         onConfirm={handleImageModalConfirm}
         initialSceneDescription={preparedData?.sceneDescription || prompt}
         initialCaptions={preparedData?.captions || ''}
-        language={user?.language || 'en'}
+        language={lang}
         isLoading={isGeneratingImage}
       />
 
