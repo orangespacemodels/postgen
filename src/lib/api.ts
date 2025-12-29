@@ -112,6 +112,9 @@ export async function generateText(request: GenerateTextRequest): Promise<{ text
   return response.json();
 }
 
+// Pricing for Image Generation
+const IMAGE_GENERATION_PRICE = 0.10; // $0.10 per image
+
 export async function generateImage(request: GenerateImageRequest): Promise<{ image_url: string }> {
   // Get user_id DIRECTLY from URL/Telegram API - exactly like carousel does
   const userId = getUserId();
@@ -127,6 +130,19 @@ export async function generateImage(request: GenerateImageRequest): Promise<{ im
   }
 
   console.log('[generateImage] Using effectiveUserId:', effectiveUserId);
+
+  // Check balance and charge for image generation
+  const spendResult = await spendTokens(
+    effectiveUserId,
+    IMAGE_GENERATION_PRICE,
+    'Image generation (Gemini)'
+  );
+
+  if (!spendResult.success) {
+    throw new Error(spendResult.error || 'Insufficient funds for image generation');
+  }
+
+  console.log(`💰 Charged $${spendResult.charged} for image generation`);
 
   // Add current date/time for image generation context
   const now = new Date();
