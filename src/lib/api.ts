@@ -232,6 +232,7 @@ export async function generateImage(request: GenerateImageRequest): Promise<{ im
   const payload: Record<string, unknown> = {
     prompt: request.prompt,
     user_id: effectiveUserId,
+    tg_chat_id: request.tg_chat_id || effectiveUserId, // For Telegram photo sending
     generated_text: request.generated_text || '',
     current_date: currentDate,
   };
