@@ -59,11 +59,14 @@ function App() {
     tgChatId: user?.tg_chat_id || 0,
   });
 
-  const { isListening, toggleListening } = useVoiceInput({
-    language: lang === 'ru' ? 'ru-RU' : 'en-US',
+  const { isListening, isProcessing: isVoiceProcessing, toggleListening } = useVoiceInput({
+    userId: user?.id || 0,
     onTranscript: (text) => {
-      setPrompt((prev) => prev + ' ' + text);
+      setPrompt((prev) => prev ? prev + ' ' + text : text);
       toast.success(t('voiceTranscribed'));
+    },
+    onError: (error) => {
+      toast.error(error);
     },
   });
 
@@ -232,11 +235,17 @@ function App() {
               <Button
                 variant="ghost"
                 size="icon"
-                className={`absolute right-2 top-2 ${isListening ? 'text-destructive' : 'text-muted-foreground'}`}
+                className={`absolute right-2 top-2 ${isListening ? 'text-destructive animate-pulse' : isVoiceProcessing ? 'text-primary' : 'text-muted-foreground'}`}
                 onClick={toggleListening}
-                disabled={isGenerating}
+                disabled={isGenerating || isVoiceProcessing}
               >
-                {isListening ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
+                {isVoiceProcessing ? (
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                ) : isListening ? (
+                  <MicOff className="h-5 w-5" />
+                ) : (
+                  <Mic className="h-5 w-5" />
+                )}
               </Button>
             </div>
 
