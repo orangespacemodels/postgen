@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { X, Check } from 'lucide-react';
-import type { ContentUsageOption, ContentAnalysisContext, PRICING } from '@/types';
+import { X, Check, ChevronDown, ChevronUp } from 'lucide-react';
+import type { ContentUsageOption } from '@/types';
 import type { AnalysisResult } from '@/lib/api';
 
 interface AnalysisModalProps {
@@ -27,50 +27,185 @@ interface OptionConfig {
     image: boolean;
     video: boolean;
   };
+  // Function to get the actual content for this option
+  getContent?: (result: AnalysisResult, isRussian: boolean) => string | null;
+  // Whether this option shows an image preview instead of text
+  showsImage?: boolean;
 }
 
 const OPTIONS: OptionConfig[] = [
   {
     id: 'use_narrative',
-    labelRu: 'Использовать тот же нарратив',
-    labelEn: 'Use the same narrative',
-    descriptionRu: 'Сгенерировать контент с похожей историей и посылом',
-    descriptionEn: 'Generate content with similar story and message',
+    labelRu: 'Использовать нарратив',
+    labelEn: 'Use narrative',
+    descriptionRu: 'Текст и посыл оригинального поста',
+    descriptionEn: 'Text and message from the original post',
     availableFor: { post: true, image: false, video: false },
+    getContent: (result) => result.post_text || result.narrative || null,
   },
   {
     id: 'use_format',
-    labelRu: 'Использовать такой же формат',
-    labelEn: 'Use the same format',
-    descriptionRu: 'Сохранить структуру и тип поста',
-    descriptionEn: 'Keep the same structure and post type',
+    labelRu: 'Использовать формат',
+    labelEn: 'Use format',
+    descriptionRu: 'Структура и тип контента',
+    descriptionEn: 'Structure and content type',
     availableFor: { post: true, image: false, video: false },
+    getContent: (result, isRussian) => {
+      const parts: string[] = [];
+
+      if (result.content_type === 'post') {
+        parts.push(isRussian ? 'Тип: Текстовый пост' : 'Type: Text post');
+      }
+      if (result.has_image) {
+        parts.push(isRussian ? '+ Изображение' : '+ Image');
+      }
+      if (result.has_video) {
+        parts.push(isRussian ? '+ Видео' : '+ Video');
+        if (result.video_duration_minutes) {
+          parts.push(`(${result.video_duration_minutes.toFixed(1)} ${isRussian ? 'мин' : 'min'})`);
+        }
+      }
+      if (result.platform_name) {
+        parts.push(`\n${isRussian ? 'Платформа' : 'Platform'}: ${result.platform_name}`);
+      }
+
+      return parts.join(' ') || null;
+    },
   },
   {
     id: 'use_style',
-    labelRu: 'Использовать такой же стиль',
-    labelEn: 'Use the same style',
-    descriptionRu: 'Применить визуальный стиль к генерируемому изображению',
-    descriptionEn: 'Apply visual style to generated image',
+    labelRu: 'Использовать стиль изображения',
+    labelEn: 'Use image style',
+    descriptionRu: 'Визуальный стиль: цвета, освещение, настроение',
+    descriptionEn: 'Visual style: colors, lighting, mood',
     availableFor: { post: false, image: true, video: false },
+    showsImage: true,
   },
   {
     id: 'use_composition',
-    labelRu: 'Использовать такую же композицию',
-    labelEn: 'Use the same composition',
-    descriptionRu: 'Сохранить расположение элементов и кадрирование',
-    descriptionEn: 'Keep element placement and framing',
+    labelRu: 'Использовать композицию',
+    labelEn: 'Use composition',
+    descriptionRu: 'Расположение объектов, ракурс, кадрирование',
+    descriptionEn: 'Object placement, angle, framing',
     availableFor: { post: false, image: true, video: false },
+    showsImage: true,
   },
   {
     id: 'use_scene',
     labelRu: 'Использовать описание сцены',
     labelEn: 'Use scene description',
-    descriptionRu: 'Добавить описание сцены в контекст генерации',
-    descriptionEn: 'Add scene description to generation context',
+    descriptionRu: 'Описание того, что происходит на изображении/видео',
+    descriptionEn: 'Description of what\'s happening in the image/video',
     availableFor: { post: false, image: true, video: true },
+    getContent: (result) => {
+      // Use transcription or narrative as scene description
+      if (result.transcription?.description) {
+        return result.transcription.description;
+      }
+      if (result.narrative) {
+        return result.narrative;
+      }
+      if (result.post_text) {
+        return result.post_text;
+      }
+      return null;
+    },
   },
 ];
+
+// Collapsible content preview component
+function ContentSpoiler({
+  content,
+  isRussian,
+  imageUrl,
+  showsImage,
+}: {
+  content: string | null;
+  isRussian: boolean;
+  imageUrl?: string;
+  showsImage?: boolean;
+}) {
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  // For image options, show the image
+  if (showsImage && imageUrl) {
+    return (
+      <div className="mt-2">
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setIsExpanded(!isExpanded);
+          }}
+          className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 transition-colors"
+        >
+          {isExpanded ? (
+            <>
+              <ChevronUp className="h-3 w-3" />
+              {isRussian ? 'Скрыть изображение' : 'Hide image'}
+            </>
+          ) : (
+            <>
+              <ChevronDown className="h-3 w-3" />
+              {isRussian ? 'Показать референс' : 'Show reference'}
+            </>
+          )}
+        </button>
+        {isExpanded && (
+          <div className="mt-2 rounded-lg overflow-hidden border border-border">
+            <img
+              src={imageUrl}
+              alt="Reference"
+              className="w-full h-24 object-cover"
+            />
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // For text content
+  if (!content) return null;
+
+  const truncatedContent = content.length > 100
+    ? content.substring(0, 100) + '...'
+    : content;
+
+  return (
+    <div className="mt-2">
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          setIsExpanded(!isExpanded);
+        }}
+        className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 transition-colors"
+      >
+        {isExpanded ? (
+          <>
+            <ChevronUp className="h-3 w-3" />
+            {isRussian ? 'Свернуть' : 'Collapse'}
+          </>
+        ) : (
+          <>
+            <ChevronDown className="h-3 w-3" />
+            {isRussian ? 'Показать контент' : 'Show content'}
+          </>
+        )}
+      </button>
+      {isExpanded && (
+        <div className="mt-2 p-2 bg-muted/50 rounded-md text-xs text-muted-foreground max-h-32 overflow-y-auto">
+          <p className="whitespace-pre-wrap break-words">{content}</p>
+        </div>
+      )}
+      {!isExpanded && content.length > 100 && (
+        <p className="mt-1 text-xs text-muted-foreground/70 italic truncate">
+          {truncatedContent}
+        </p>
+      )}
+    </div>
+  );
+}
 
 export function AnalysisModal({
   isOpen,
@@ -96,6 +231,20 @@ export function AnalysisModal({
   const getAvailableOptions = () => {
     return OPTIONS.filter((option) => {
       const contentType = analysisResult.content_type;
+
+      // Check if the option has content available
+      if (option.getContent) {
+        const content = option.getContent(analysisResult, isRussian);
+        if (!content && !option.showsImage) {
+          return false; // Hide option if no content available
+        }
+      }
+
+      // Check if image options have an image
+      if (option.showsImage && !analysisResult.image_url) {
+        return false;
+      }
+
       if (contentType === 'post' && analysisResult.has_image) {
         return option.availableFor.post || option.availableFor.image;
       }
@@ -139,7 +288,7 @@ export function AnalysisModal({
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="text-lg">
-              {isRussian ? 'Как использовать материал?' : 'How to use this content?'}
+              {isRussian ? 'Что использовать из анализа?' : 'What to use from analysis?'}
             </CardTitle>
             <Button variant="ghost" size="icon" onClick={onClose}>
               <X className="h-4 w-4" />
@@ -152,81 +301,75 @@ export function AnalysisModal({
             {/* Platform */}
             {analysisResult.platform_name && (
               <div>
-                {isRussian ? 'Платформа: ' : 'Platform: '}
+                {isRussian ? 'Источник: ' : 'Source: '}
                 <span className="font-medium text-foreground">
                   {analysisResult.platform_name}
                   {analysisResult.author && ` (@${analysisResult.author})`}
                 </span>
               </div>
             )}
-            {/* Content type */}
-            <div>
-              {isRussian ? 'Тип контента: ' : 'Content type: '}
-              <span className="font-medium text-foreground">
-                {analysisResult.content_type === 'post' && (isRussian ? 'Пост' : 'Post')}
-                {analysisResult.content_type === 'image' && (isRussian ? 'Изображение' : 'Image')}
-                {analysisResult.content_type === 'video' && (isRussian ? 'Видео' : 'Video')}
-                {analysisResult.has_image && ` + ${isRussian ? 'изображение' : 'image'}`}
-                {analysisResult.has_video && ` + ${isRussian ? 'видео' : 'video'}`}
-              </span>
-            </div>
           </div>
 
-          {/* Media preview */}
-          {analysisResult.image_url && (
-            <div className="space-y-2">
-              <p className="text-sm text-muted-foreground">
-                {isRussian ? 'Найденный медиа-контент:' : 'Found media content:'}
-              </p>
-              <div className="rounded-lg overflow-hidden border border-border">
-                <img
-                  src={analysisResult.image_url}
-                  alt="Analyzed content"
-                  className="w-full h-32 object-cover"
-                />
-              </div>
-              <p className="text-xs text-muted-foreground">
-                {isRussian
-                  ? 'Выберите "Использовать стиль" или "Использовать композицию" для генерации похожего изображения'
-                  : 'Select "Use style" or "Use composition" to generate similar image'}
-              </p>
-            </div>
-          )}
-
-          {/* Options checkboxes */}
+          {/* Options checkboxes with content previews */}
           <div className="space-y-3">
-            {availableOptions.map((option) => (
-              <label
-                key={option.id}
-                className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
-                  selectedOptions.includes(option.id)
-                    ? 'border-primary bg-primary/10'
-                    : 'border-border hover:border-primary/50'
-                }`}
-              >
+            {availableOptions.map((option) => {
+              const content = option.getContent
+                ? option.getContent(analysisResult, isRussian)
+                : null;
+
+              return (
                 <div
-                  className={`flex-shrink-0 w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${
+                  key={option.id}
+                  className={`p-3 rounded-lg border cursor-pointer transition-all ${
                     selectedOptions.includes(option.id)
-                      ? 'border-primary bg-primary'
-                      : 'border-muted-foreground'
+                      ? 'border-primary bg-primary/10'
+                      : 'border-border hover:border-primary/50'
                   }`}
-                  onClick={() => toggleOption(option.id)}
                 >
-                  {selectedOptions.includes(option.id) && (
-                    <Check className="h-3 w-3 text-primary-foreground" />
-                  )}
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <div
+                      className={`flex-shrink-0 w-5 h-5 rounded border-2 flex items-center justify-center transition-all mt-0.5 ${
+                        selectedOptions.includes(option.id)
+                          ? 'border-primary bg-primary'
+                          : 'border-muted-foreground'
+                      }`}
+                      onClick={() => toggleOption(option.id)}
+                    >
+                      {selectedOptions.includes(option.id) && (
+                        <Check className="h-3 w-3 text-primary-foreground" />
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0" onClick={() => toggleOption(option.id)}>
+                      <p className="text-sm font-medium">
+                        {isRussian ? option.labelRu : option.labelEn}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {isRussian ? option.descriptionRu : option.descriptionEn}
+                      </p>
+                    </div>
+                  </label>
+
+                  {/* Collapsible content preview */}
+                  <div className="ml-8">
+                    <ContentSpoiler
+                      content={content}
+                      isRussian={isRussian}
+                      imageUrl={analysisResult.image_url}
+                      showsImage={option.showsImage}
+                    />
+                  </div>
                 </div>
-                <div className="flex-1 min-w-0" onClick={() => toggleOption(option.id)}>
-                  <p className="text-sm font-medium">
-                    {isRussian ? option.labelRu : option.labelEn}
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    {isRussian ? option.descriptionRu : option.descriptionEn}
-                  </p>
-                </div>
-              </label>
-            ))}
+              );
+            })}
           </div>
+
+          {availableOptions.length === 0 && (
+            <p className="text-sm text-muted-foreground text-center py-4">
+              {isRussian
+                ? 'Не удалось извлечь данные из контента'
+                : 'Could not extract data from content'}
+            </p>
+          )}
 
           {/* Cost display */}
           <div className="flex items-center justify-between pt-2 border-t">
@@ -257,6 +400,7 @@ export function AnalysisModal({
               disabled={selectedOptions.length === 0 || hasInsufficientBalance}
             >
               {isRussian ? 'Применить' : 'Apply'}
+              {selectedOptions.length > 0 && ` (${selectedOptions.length})`}
             </Button>
           </div>
         </CardContent>
