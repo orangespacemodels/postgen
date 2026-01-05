@@ -120,17 +120,18 @@ async def debug_supabase(user_id: int):
 @router.get("/debug/scrapecreators")
 async def debug_scrapecreators():
     """Debug: Test ScrapeCreators API connection with YouTube."""
+    import urllib.parse
     settings = get_settings()
     async with httpx.AsyncClient(timeout=30.0) as client:
-        # Test YouTube endpoint
-        video_id = "dQw4w9WgXcQ"
+        # Test YouTube endpoint - uses 'url' parameter
+        test_url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
         headers = {"x-api-key": settings.scrapecreators_api_key}
-        url = f"https://api.scrapecreators.com/v1/youtube/video?videoId={video_id}"
+        api_url = f"https://api.scrapecreators.com/v1/youtube/video?url={urllib.parse.quote(test_url)}"
 
         try:
-            response = await client.get(url, headers=headers)
+            response = await client.get(api_url, headers=headers)
             return {
-                "api_url": url,
+                "api_url": api_url,
                 "status_code": response.status_code,
                 "response_text": response.text[:1000] if response.text else None,
                 "api_key_len": len(settings.scrapecreators_api_key),

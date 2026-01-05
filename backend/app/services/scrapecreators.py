@@ -161,11 +161,8 @@ class ScrapeCreatorsClient:
 
     async def analyze_youtube(self, url: str) -> dict:
         """Analyze YouTube video/short using ScrapeCreators API."""
-        video_id = self.extract_youtube_video_id(url)
-        if not video_id:
-            raise ValueError(f"Could not extract video ID from YouTube URL: {url}")
-
-        data = await self._make_request("/youtube/video", {"videoId": video_id})
+        # ScrapeCreators YouTube API uses 'url' parameter
+        data = await self._make_request("/youtube/video", {"url": url})
 
         # Duration is usually in ISO 8601 format (PT1H2M3S) or seconds
         duration_seconds = data.get("duration", 0)
