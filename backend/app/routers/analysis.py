@@ -115,3 +115,28 @@ async def debug_supabase(user_id: int):
             "response_text": response.text[:500] if response.text else None,
             "headers_sent": str(dict(headers))[:100],
         }
+
+
+@router.get("/debug/scrapecreators")
+async def debug_scrapecreators():
+    """Debug: Test ScrapeCreators API connection."""
+    settings = get_settings()
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        # Try a simple Instagram URL
+        test_url = "https://www.instagram.com/p/C0xN5lRu5Ve/"
+        headers = {"x-api-key": settings.scrapecreators_api_key}
+        url = f"https://api.scrapecreators.com/v1/instagram/post?url={test_url}"
+
+        try:
+            response = await client.get(url, headers=headers)
+            return {
+                "api_url": url,
+                "status_code": response.status_code,
+                "response_text": response.text[:1000] if response.text else None,
+                "api_key_len": len(settings.scrapecreators_api_key),
+            }
+        except Exception as e:
+            return {
+                "error": str(e),
+                "error_type": type(e).__name__,
+            }
