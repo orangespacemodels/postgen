@@ -8,6 +8,9 @@ class Settings(BaseSettings):
     # ScrapeCreators API
     scrapecreators_api_key: str = ""
 
+    # OpenAI API (for Whisper speech-to-text)
+    openai_api_key: str = ""
+
     # Supabase (for balance management)
     supabase_url: str = ""
     supabase_anon_key: str = ""

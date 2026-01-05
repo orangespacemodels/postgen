@@ -1,5 +1,4 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
 
 interface UseVoiceInputOptions {
   onTranscript?: (text: string) => void;
@@ -141,19 +140,25 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}) {
         const mimeType = mediaRecorder.mimeType || 'audio/webm';
         const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
 
-        // Send to Supabase Edge Function for transcription
+        // Send to backend API for transcription (OpenAI Whisper)
         if (audioBlob.size > 0) {
           setIsProcessing(true);
           try {
             const formData = new FormData();
             formData.append('audio', audioBlob, 'recording.webm');
 
-            console.log('[useVoiceInput] Sending to speech-to-text function...');
-            const { data, error: apiError } = await supabase.functions.invoke('speech-to-text', {
-              body: formData
+            console.log('[useVoiceInput] Sending to backend speech-to-text API...');
+            const response = await fetch('/api/speech-to-text', {
+              method: 'POST',
+              body: formData,
             });
 
-            if (apiError) throw apiError;
+            if (!response.ok) {
+              const errorData = await response.json().catch(() => ({}));
+              throw new Error(errorData.detail || `API error: ${response.status}`);
+            }
+
+            const data = await response.json();
 
             if (data?.transcript) {
               console.log('[useVoiceInput] Transcribed:', data.transcript);

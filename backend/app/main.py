@@ -2,7 +2,7 @@
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import analysis_router
+from app.routers import analysis_router, speech_router
 from app.config import get_settings
 
 settings = get_settings()
@@ -24,6 +24,7 @@ app.add_middleware(
 
 # Include routers
 app.include_router(analysis_router)
+app.include_router(speech_router)
 
 
 @app.get("/")
