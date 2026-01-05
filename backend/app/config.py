@@ -1,6 +1,5 @@
 from pydantic_settings import BaseSettings
 from functools import lru_cache
-import os
 
 
 class Settings(BaseSettings):
@@ -28,8 +27,4 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    # Debug: print environment variables
-    print(f"[Config] SCRAPECREATORS_API_KEY set: {bool(os.getenv('SCRAPECREATORS_API_KEY'))}")
-    print(f"[Config] SUPABASE_URL set: {bool(os.getenv('SUPABASE_URL'))}")
-    print(f"[Config] SUPABASE_ANON_KEY set: {bool(os.getenv('SUPABASE_ANON_KEY'))}")
     return Settings()
