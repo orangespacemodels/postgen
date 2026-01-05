@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { X, SwitchCamera, Camera, Video, Check, RotateCcw, ZoomIn, ZoomOut } from 'lucide-react';
+import { X, Camera, Check, RotateCcw, ZoomIn, ZoomOut, ChevronDown } from 'lucide-react';
 
 interface CameraModalProps {
   isOpen: boolean;
@@ -13,6 +13,7 @@ type CaptureMode = 'photo' | 'video';
 interface CameraDevice {
   deviceId: string;
   label: string;
+  isFrontFacing: boolean;
 }
 
 export function CameraModal({ isOpen, onClose, onCapture, language }: CameraModalProps) {
@@ -27,6 +28,7 @@ export function CameraModal({ isOpen, onClose, onCapture, language }: CameraModa
   const [recordingTime, setRecordingTime] = useState(0);
   const [cameras, setCameras] = useState<CameraDevice[]>([]);
   const [currentCameraIndex, setCurrentCameraIndex] = useState(0);
+  const [isCameraMenuOpen, setIsCameraMenuOpen] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [minZoom, setMinZoom] = useState(1);
   const [maxZoom, setMaxZoom] = useState(1);
@@ -35,20 +37,43 @@ export function CameraModal({ isOpen, onClose, onCapture, language }: CameraModa
   const [error, setError] = useState<string | null>(null);
 
   const isRussian = language === 'ru';
+  const currentCamera = cameras[currentCameraIndex];
+  const isFrontCamera = currentCamera?.isFrontFacing ?? false;
 
   // Get available cameras
   const getCameras = useCallback(async () => {
     try {
+      // Request permission first to get labels
+      await navigator.mediaDevices.getUserMedia({ video: true });
+
       const devices = await navigator.mediaDevices.enumerateDevices();
       const videoDevices = devices
         .filter((device) => device.kind === 'videoinput')
-        .map((device, index) => ({
-          deviceId: device.deviceId,
-          label: device.label || `${isRussian ? 'Камера' : 'Camera'} ${index + 1}`,
-        }));
+        .map((device, index) => {
+          const label = device.label || `${isRussian ? 'Камера' : 'Camera'} ${index + 1}`;
+          // Detect front-facing camera by label
+          const isFrontFacing = label.toLowerCase().includes('front') ||
+                               label.toLowerCase().includes('facetime') ||
+                               label.toLowerCase().includes('передняя') ||
+                               label.toLowerCase().includes('фронтальная');
+          return {
+            deviceId: device.deviceId,
+            label,
+            isFrontFacing,
+          };
+        });
       setCameras(videoDevices);
+
+      // Find back camera by default, or use first available
+      const backCameraIndex = videoDevices.findIndex(cam => !cam.isFrontFacing);
+      if (backCameraIndex !== -1) {
+        setCurrentCameraIndex(backCameraIndex);
+      }
+
+      return videoDevices;
     } catch (err) {
       console.error('Error getting cameras:', err);
+      return [];
     }
   }, [isRussian]);
 
@@ -66,8 +91,8 @@ export function CameraModal({ isOpen, onClose, onCapture, language }: CameraModa
       const constraints: MediaStreamConstraints = {
         video: {
           deviceId: deviceId ? { exact: deviceId } : undefined,
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
+          width: { ideal: 1080 },
+          height: { ideal: 1920 },
           facingMode: deviceId ? undefined : 'environment',
         },
         audio: mode === 'video',
@@ -108,8 +133,14 @@ export function CameraModal({ isOpen, onClose, onCapture, language }: CameraModa
   // Initialize camera on open
   useEffect(() => {
     if (isOpen) {
-      getCameras().then(() => {
-        startCamera(cameras[currentCameraIndex]?.deviceId);
+      getCameras().then((cams) => {
+        if (cams.length > 0) {
+          const backCameraIndex = cams.findIndex(cam => !cam.isFrontFacing);
+          const indexToUse = backCameraIndex !== -1 ? backCameraIndex : 0;
+          startCamera(cams[indexToUse]?.deviceId);
+        } else {
+          startCamera();
+        }
       });
     }
 
@@ -120,13 +151,12 @@ export function CameraModal({ isOpen, onClose, onCapture, language }: CameraModa
     };
   }, [isOpen]);
 
-  // Switch camera
-  const switchCamera = useCallback(() => {
-    if (cameras.length <= 1) return;
-    const nextIndex = (currentCameraIndex + 1) % cameras.length;
-    setCurrentCameraIndex(nextIndex);
-    startCamera(cameras[nextIndex]?.deviceId);
-  }, [cameras, currentCameraIndex, startCamera]);
+  // Select camera from dropdown
+  const selectCamera = useCallback((index: number) => {
+    setCurrentCameraIndex(index);
+    setIsCameraMenuOpen(false);
+    startCamera(cameras[index]?.deviceId);
+  }, [cameras, startCamera]);
 
   // Apply zoom
   useEffect(() => {
@@ -168,6 +198,12 @@ export function CameraModal({ isOpen, onClose, onCapture, language }: CameraModa
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
+    // For front camera, flip the image horizontally
+    if (isFrontCamera) {
+      ctx.translate(canvas.width, 0);
+      ctx.scale(-1, 1);
+    }
+
     ctx.drawImage(video, 0, 0);
 
     canvas.toBlob(
@@ -182,7 +218,7 @@ export function CameraModal({ isOpen, onClose, onCapture, language }: CameraModa
       'image/jpeg',
       0.9
     );
-  }, []);
+  }, [isFrontCamera]);
 
   // Start/stop video recording
   const toggleRecording = useCallback(() => {
@@ -195,9 +231,20 @@ export function CameraModal({ isOpen, onClose, onCapture, language }: CameraModa
       if (!streamRef.current) return;
 
       chunksRef.current = [];
-      const mediaRecorder = new MediaRecorder(streamRef.current, {
-        mimeType: 'video/webm;codecs=vp9',
-      });
+
+      // Try different mimeTypes for compatibility
+      let mimeType = 'video/webm;codecs=vp9';
+      if (!MediaRecorder.isTypeSupported(mimeType)) {
+        mimeType = 'video/webm;codecs=vp8';
+        if (!MediaRecorder.isTypeSupported(mimeType)) {
+          mimeType = 'video/webm';
+          if (!MediaRecorder.isTypeSupported(mimeType)) {
+            mimeType = 'video/mp4';
+          }
+        }
+      }
+
+      const mediaRecorder = new MediaRecorder(streamRef.current, { mimeType });
 
       mediaRecorder.ondataavailable = (e) => {
         if (e.data.size > 0) {
@@ -206,8 +253,9 @@ export function CameraModal({ isOpen, onClose, onCapture, language }: CameraModa
       };
 
       mediaRecorder.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: 'video/webm' });
-        const file = new File([blob], `video_${Date.now()}.webm`, { type: 'video/webm' });
+        const blob = new Blob(chunksRef.current, { type: mimeType });
+        const extension = mimeType.includes('mp4') ? 'mp4' : 'webm';
+        const file = new File([blob], `video_${Date.now()}.${extension}`, { type: mimeType });
         setCapturedMedia({
           url: URL.createObjectURL(blob),
           file,
@@ -216,7 +264,7 @@ export function CameraModal({ isOpen, onClose, onCapture, language }: CameraModa
       };
 
       mediaRecorderRef.current = mediaRecorder;
-      mediaRecorder.start();
+      mediaRecorder.start(100); // Collect data every 100ms
       setIsRecording(true);
     }
   }, [isRecording]);
@@ -235,7 +283,9 @@ export function CameraModal({ isOpen, onClose, onCapture, language }: CameraModa
       URL.revokeObjectURL(capturedMedia.url);
     }
     setCapturedMedia(null);
-  }, [capturedMedia]);
+    // Restart camera
+    startCamera(cameras[currentCameraIndex]?.deviceId);
+  }, [capturedMedia, cameras, currentCameraIndex, startCamera]);
 
   // Format time for recording
   const formatTime = (seconds: number) => {
@@ -256,6 +306,7 @@ export function CameraModal({ isOpen, onClose, onCapture, language }: CameraModa
     setIsRecording(false);
     setRecordingTime(0);
     setZoom(1);
+    setIsCameraMenuOpen(false);
     onClose();
   }, [capturedMedia, onClose]);
 
@@ -286,23 +337,55 @@ export function CameraModal({ isOpen, onClose, onCapture, language }: CameraModa
             </div>
           )}
 
-          {/* Camera switch button */}
+          {/* Camera selector dropdown */}
           {cameras.length > 1 && !capturedMedia && (
-            <button
-              onClick={switchCamera}
-              disabled={isInitializing}
-              className="w-10 h-10 flex items-center justify-center rounded-full bg-white/20 backdrop-blur-md active:bg-white/30 transition-colors disabled:opacity-50"
-            >
-              <SwitchCamera className="w-5 h-5 text-white" />
-            </button>
+            <div className="relative">
+              <button
+                onClick={() => setIsCameraMenuOpen(!isCameraMenuOpen)}
+                disabled={isInitializing || isRecording}
+                className="flex items-center gap-1 px-3 py-2 rounded-full bg-white/20 backdrop-blur-md active:bg-white/30 transition-colors disabled:opacity-50"
+              >
+                <span className="text-white text-xs max-w-24 truncate">
+                  {currentCamera?.label || (isRussian ? 'Камера' : 'Camera')}
+                </span>
+                <ChevronDown className={`w-4 h-4 text-white transition-transform ${isCameraMenuOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              {/* Dropdown menu */}
+              {isCameraMenuOpen && (
+                <div className="absolute top-full right-0 mt-2 min-w-48 bg-black/90 backdrop-blur-md rounded-xl overflow-hidden border border-white/20">
+                  {cameras.map((camera, index) => (
+                    <button
+                      key={camera.deviceId}
+                      onClick={() => selectCamera(index)}
+                      className={`w-full px-4 py-3 text-left text-sm transition-colors ${
+                        index === currentCameraIndex
+                          ? 'bg-white/20 text-white'
+                          : 'text-white/70 active:bg-white/10'
+                      }`}
+                    >
+                      {camera.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           )}
 
           {cameras.length <= 1 && !capturedMedia && <div className="w-10" />}
         </div>
       </div>
 
+      {/* Click outside to close camera menu */}
+      {isCameraMenuOpen && (
+        <div
+          className="absolute inset-0 z-10"
+          onClick={() => setIsCameraMenuOpen(false)}
+        />
+      )}
+
       {/* Camera Preview / Captured Media */}
-      <div className="absolute inset-0 flex items-center justify-center">
+      <div className="absolute inset-0 flex items-center justify-center bg-black">
         {error ? (
           <div className="text-center px-6">
             <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-white/10 flex items-center justify-center">
@@ -314,22 +397,22 @@ export function CameraModal({ isOpen, onClose, onCapture, language }: CameraModa
           capturedMedia.file.type.startsWith('video') ? (
             <video
               src={capturedMedia.url}
-              className="w-full h-full object-contain"
+              className="max-w-full max-h-full object-contain"
               controls
               autoPlay
-              loop
+              playsInline
             />
           ) : (
             <img
               src={capturedMedia.url}
               alt="Captured"
-              className="w-full h-full object-contain"
+              className="max-w-full max-h-full object-contain"
             />
           )
         ) : (
           <video
             ref={videoRef}
-            className="w-full h-full object-cover"
+            className={`max-w-full max-h-full object-contain ${isFrontCamera ? 'scale-x-[-1]' : ''}`}
             playsInline
             muted
             autoPlay
@@ -337,7 +420,7 @@ export function CameraModal({ isOpen, onClose, onCapture, language }: CameraModa
         )}
 
         {/* Loading overlay */}
-        {isInitializing && !error && (
+        {isInitializing && !error && !capturedMedia && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/50">
             <div className="w-12 h-12 border-2 border-white/20 border-t-white rounded-full animate-spin" />
           </div>
@@ -346,7 +429,7 @@ export function CameraModal({ isOpen, onClose, onCapture, language }: CameraModa
 
       {/* Zoom Control - iOS style slider */}
       {!capturedMedia && maxZoom > 1 && !error && (
-        <div className="absolute left-1/2 -translate-x-1/2 bottom-44 z-20 w-64">
+        <div className="absolute left-1/2 -translate-x-1/2 bottom-40 z-20 w-64">
           <div className="flex items-center gap-3 px-4 py-2 rounded-full bg-black/40 backdrop-blur-md">
             <ZoomOut className="w-4 h-4 text-white/70" />
             <input
@@ -459,18 +542,6 @@ export function CameraModal({ isOpen, onClose, onCapture, language }: CameraModa
                     }`}
                   />
                 </button>
-              </div>
-
-              {/* Mode icon hints */}
-              <div className="flex justify-center mt-4 gap-8">
-                <div className="flex items-center gap-1.5 text-white/50">
-                  <Camera className="w-4 h-4" />
-                  <span className="text-xs">{isRussian ? 'Фото' : 'Photo'}</span>
-                </div>
-                <div className="flex items-center gap-1.5 text-white/50">
-                  <Video className="w-4 h-4" />
-                  <span className="text-xs">{isRussian ? 'Видео' : 'Video'}</span>
-                </div>
               </div>
             </>
           )}
