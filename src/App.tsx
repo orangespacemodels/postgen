@@ -533,7 +533,7 @@ function App() {
         prompt={prompt}
         language={lang}
         isLoading={isGeneratingText}
-        suggestedCta=""
+        userId={user?.id || 0}
       />
 
       <Toaster />

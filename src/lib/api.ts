@@ -83,6 +83,16 @@ export interface PrepareImageRequest {
   language?: 'ru' | 'en';
 }
 
+export interface GenerateCtaRequest {
+  prompt: string;
+  user_id: number;
+  language?: 'ru' | 'en';
+}
+
+export interface GenerateCtaResponse {
+  suggestions: string[];
+}
+
 export interface PrepareImageResponse {
   scene_description: string;
   captions: string;
@@ -90,6 +100,8 @@ export interface PrepareImageResponse {
 
 // Pricing for Magic Wand
 const MAGIC_WAND_PRICE = 0.05; // $0.05 per improvement
+// Pricing for CTA suggestions (uses same workflow, cheaper operation)
+const CTA_SUGGESTIONS_PRICE = 0.02; // $0.02 per CTA generation
 // Pricing for image preparation (scene + captions generation via AI)
 const PREPARE_IMAGE_PRICE = 0.02; // $0.02 per preparation
 
@@ -119,6 +131,54 @@ export async function improvePrompt(request: ImprovePromptRequest): Promise<stri
 
   const data = await response.json();
   return data.improved_prompt || data.prompt || request.prompt;
+}
+
+// Generate CTA suggestions webhook
+const GENERATE_CTA_URL = `${N8N_BASE_URL}/post-generate-cta`;
+
+export async function generateCtaSuggestions(request: GenerateCtaRequest): Promise<GenerateCtaResponse> {
+  // Check balance first via Supabase
+  const spendResult = await spendTokens(
+    request.user_id,
+    CTA_SUGGESTIONS_PRICE,
+    'CTA suggestions generation'
+  );
+
+  if (!spendResult.success) {
+    throw new Error(spendResult.error || 'Insufficient funds for CTA generation');
+  }
+
+  console.log(`💰 Charged $${spendResult.charged} for CTA suggestions`);
+
+  const response = await fetch(GENERATE_CTA_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to generate CTA suggestions');
+  }
+
+  const data = await response.json();
+
+  // Expect response like { suggestions: ["CTA 1", "CTA 2", "CTA 3"] }
+  // or { cta_1: "...", cta_2: "...", cta_3: "..." }
+  if (data.suggestions && Array.isArray(data.suggestions)) {
+    return { suggestions: data.suggestions.slice(0, 3) };
+  }
+
+  // Handle alternative response format
+  const suggestions: string[] = [];
+  if (data.cta_1) suggestions.push(data.cta_1);
+  if (data.cta_2) suggestions.push(data.cta_2);
+  if (data.cta_3) suggestions.push(data.cta_3);
+
+  if (suggestions.length > 0) {
+    return { suggestions };
+  }
+
+  throw new Error('Invalid response format from CTA generation');
 }
 
 export async function generateText(request: GenerateTextRequest): Promise<{ text: string }> {
