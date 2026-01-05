@@ -31,7 +31,8 @@ async def check_balance(user_id: int, required_amount: float) -> bool:
 
     async with httpx.AsyncClient(timeout=30.0) as http_client:
         # Supabase REST API uses column=operator.value format
-        url = f"{client.base_url}/rest/v1/user_data?select=balance&user_id=eq.{user_id}"
+        # Note: table uses 'id' column (the telegram user id)
+        url = f"{client.base_url}/rest/v1/user_data?select=balance&id=eq.{user_id}"
         response = await http_client.get(url, headers=client.headers)
 
         if response.status_code != 200:

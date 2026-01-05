@@ -105,8 +105,8 @@ async def debug_supabase(user_id: int):
             "Authorization": f"Bearer {settings.supabase_anon_key}",
         }
 
-        # Test the exact URL format
-        url = f"{settings.supabase_url}/rest/v1/user_data?select=balance&user_id=eq.{user_id}"
+        # Test the exact URL format (column is 'id', not 'user_id')
+        url = f"{settings.supabase_url}/rest/v1/user_data?select=balance&id=eq.{user_id}"
         response = await client.get(url, headers=headers)
 
         return {
