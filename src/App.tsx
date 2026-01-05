@@ -121,7 +121,11 @@ function App() {
   };
 
   const handleGenText = () => {
-    handleGenerateText(prompt);
+    // Pass narrative/format context if available from content analysis
+    handleGenerateText(prompt, {
+      narrative: analysisContext?.narrative,
+      format_description: analysisContext?.format_description,
+    });
   };
 
   const handleGenImage = async () => {
@@ -143,7 +147,16 @@ function App() {
   const handleImageModalConfirm = (params: ImageGenerationParams) => {
     // Close modal and start generation with modal parameters
     setShowImageModal(false);
-    handleGenerateImage(prompt, user?.id, user?.tg_chat_id, params);
+
+    // Enhance params with reference image from analysis context if available
+    const enhancedParams: ImageGenerationParams = {
+      ...params,
+      referenceImageUrl: analysisContext?.reference_image_url,
+      useReferenceForStyle: analysisContext?.selected_options?.includes('use_style'),
+      useReferenceForComposition: analysisContext?.selected_options?.includes('use_composition'),
+    };
+
+    handleGenerateImage(prompt, user?.id, user?.tg_chat_id, enhancedParams);
   };
 
   const handleImageModalClose = () => {
@@ -387,6 +400,7 @@ function App() {
         initialCaptions={preparedData?.captions || ''}
         language={lang}
         isLoading={isGeneratingImage}
+        referenceImageUrl={analysisContext?.use_reference_image ? analysisContext.reference_image_url : undefined}
       />
 
       <Toaster />

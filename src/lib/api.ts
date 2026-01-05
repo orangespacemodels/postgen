@@ -43,14 +43,21 @@ export function getUserId(): number | null {
   return userId;
 }
 
-// Content analysis webhook (n8n workflow)
-const CONTENT_ANALYZE_URL = `${N8N_BASE_URL}/post-content-analyze`;
+// Content analysis - use local backend API (proxied via nginx)
+// Falls back to n8n if backend is unavailable
+const BACKEND_API_URL = '/api';
+const CONTENT_ANALYZE_URL_BACKEND = `${BACKEND_API_URL}/analyze-url`;
+// Legacy n8n URL for fallback
+const CONTENT_ANALYZE_URL_N8N = `${N8N_BASE_URL}/post-content-analyze`;
 
 export interface GenerateTextRequest {
   prompt: string;
   user_id: number;
   tg_chat_id: number;
   post_id?: number;
+  // Context from content analysis (for rewriting posts)
+  narrative?: string;           // Original post narrative to rewrite
+  format_description?: string;  // Format structure to follow
 }
 
 export interface GenerateImageRequest {
@@ -65,6 +72,10 @@ export interface GenerateImageRequest {
   aspect_ratio?: '16:9' | '1:1' | '9:16';
   style_id?: string;
   style_prompt?: string;
+  // Reference image for style transfer (from content analysis)
+  reference_image_url?: string;
+  use_reference_for_style?: boolean;
+  use_reference_for_composition?: boolean;
 }
 
 export interface ImprovePromptRequest {
@@ -254,6 +265,13 @@ export async function generateImage(request: GenerateImageRequest): Promise<{ im
     payload.style_prompt = request.style_prompt;
   }
 
+  // Add reference image parameters for style transfer
+  if (request.reference_image_url) {
+    payload.reference_image_url = request.reference_image_url;
+    payload.use_reference_for_style = request.use_reference_for_style || false;
+    payload.use_reference_for_composition = request.use_reference_for_composition || false;
+  }
+
   const response = await fetch(GENERATE_IMAGE_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -316,6 +334,10 @@ export interface AnalysisResult {
   image_url?: string;
   video_url?: string;
   video_duration_minutes?: number;
+  // Platform information from ScrapeCreators
+  platform?: string;       // Platform ID: instagram, tiktok, youtube, etc.
+  platform_name?: string;  // Display name: Instagram, TikTok, YouTube, etc.
+  author?: string;         // Author username/name
   // Transcription data from fetch-url-content
   transcription?: {
     text?: string;
@@ -425,40 +447,61 @@ const PRICING = {
 };
 
 // Analyze content from URL (Instagram, TikTok, etc.)
-// Uses n8n workflow "Content Analysis Webhook (Post MiniApp)"
+// Uses backend API with ScrapeCreators, falls back to n8n if backend unavailable
 export async function analyzeContentUrl(
   url: string,
   userId: number,
   postId?: number
 ): Promise<AnalysisResult> {
-  // First, charge for URL analysis ($0.10) using n8n workflow
-  const spendResult = await spendTokens(
-    userId,
-    PRICING.URL_ANALYSIS,
-    `URL analysis: ${url}`
-  );
+  // First, try to use local backend API (proxied via nginx)
+  let response: Response;
+  let useBackend = true;
 
-  if (!spendResult.success) {
-    throw new Error(spendResult.error || 'Insufficient funds for URL analysis');
-  }
+  try {
+    console.log('[analyzeContentUrl] Trying backend API...');
+    response = await fetch(CONTENT_ANALYZE_URL_BACKEND, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url, user_id: userId, post_id: postId }),
+    });
 
-  console.log(`💰 Charged $${spendResult.charged} for URL analysis`);
+    if (!response.ok) {
+      throw new Error(`Backend returned ${response.status}`);
+    }
+    console.log('[analyzeContentUrl] Backend API success');
+  } catch (backendError) {
+    // Fallback to n8n if backend is unavailable
+    console.warn('[analyzeContentUrl] Backend unavailable, falling back to n8n:', backendError);
+    useBackend = false;
 
-  // Fetch content using n8n workflow
-  const response = await fetch(CONTENT_ANALYZE_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ url, user_id: userId, post_id: postId }),
-  });
+    // Charge for URL analysis when using n8n (backend handles its own charging)
+    const spendResult = await spendTokens(
+      userId,
+      PRICING.URL_ANALYSIS,
+      `URL analysis: ${url}`
+    );
 
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.error || 'Failed to analyze URL content');
+    if (!spendResult.success) {
+      throw new Error(spendResult.error || 'Insufficient funds for URL analysis');
+    }
+
+    console.log(`💰 Charged $${spendResult.charged} for URL analysis`);
+
+    response = await fetch(CONTENT_ANALYZE_URL_N8N, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url, user_id: userId, post_id: postId }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || 'Failed to analyze URL content');
+    }
   }
 
   const data = await response.json();
 
-  if (!data.success) {
+  if (!data.success && !useBackend) {
     throw new Error(data.error || 'Failed to analyze content');
   }
 
@@ -470,6 +513,9 @@ export async function analyzeContentUrl(
     image_url: data.image_url,
     video_url: data.video_url,
     video_duration_minutes: data.video_duration_minutes,
+    platform: data.platform,
+    platform_name: data.platform_name,
+    author: data.author,
     source_url: data.source_url || url,
     narrative: data.narrative || data.post_text,
     format_description: data.format_description,

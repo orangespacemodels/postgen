@@ -23,7 +23,13 @@ export function useGeneration({ userId, tgChatId, postId }: UseGenerationOptions
   const [preparedData, setPreparedData] = useState<PreparedImageData | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const handleGenerateText = useCallback(async (prompt: string) => {
+  const handleGenerateText = useCallback(async (
+    prompt: string,
+    options?: {
+      narrative?: string;
+      format_description?: string;
+    }
+  ) => {
     if (!prompt.trim()) {
       setError('Please enter a prompt');
       return;
@@ -38,6 +44,9 @@ export function useGeneration({ userId, tgChatId, postId }: UseGenerationOptions
         user_id: userId,
         tg_chat_id: tgChatId,
         post_id: postId || undefined,
+        // Pass narrative context for rewriting posts
+        narrative: options?.narrative,
+        format_description: options?.format_description,
       });
       setGeneratedText(result.text);
     } catch (err) {
@@ -96,6 +105,13 @@ export function useGeneration({ userId, tgChatId, postId }: UseGenerationOptions
         const selectedStyle = IMAGE_STYLES.find((s) => s.id === modalParams.styleId);
         if (selectedStyle) {
           requestParams.style_prompt = selectedStyle.prompt;
+        }
+
+        // Add reference image parameters for style transfer
+        if (modalParams.referenceImageUrl) {
+          requestParams.reference_image_url = modalParams.referenceImageUrl;
+          requestParams.use_reference_for_style = modalParams.useReferenceForStyle || false;
+          requestParams.use_reference_for_composition = modalParams.useReferenceForComposition || false;
         }
       }
 

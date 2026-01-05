@@ -68,6 +68,11 @@ export interface ContentAnalysisContext {
   composition_description?: string;
   scene_description?: string;
   analysis_cost: number;
+
+  // Reference media for generation (extracted from analyzed content)
+  reference_image_url?: string;    // Image URL from analyzed content
+  reference_video_url?: string;    // Video URL (for thumbnail extraction)
+  use_reference_image?: boolean;   // User opted to use reference for style transfer
 }
 
 // Pricing constants (in USD)
@@ -171,4 +176,9 @@ export interface ImageGenerationParams {
   captions: string;
   aspectRatio: AspectRatio;
   styleId: string;
+
+  // Reference image for style transfer (from content analysis)
+  referenceImageUrl?: string;
+  useReferenceForStyle?: boolean;      // Apply style from reference
+  useReferenceForComposition?: boolean; // Apply composition from reference
 }

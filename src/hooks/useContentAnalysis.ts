@@ -123,6 +123,10 @@ export function useContentAnalysis({ userId, tgChatId, postId }: UseContentAnaly
 
     const cost = calculateAnalysisCost(analysisResult);
 
+    // Check if user selected options that require reference image
+    const needsReferenceImage =
+      selectedOptions.includes('use_style') || selectedOptions.includes('use_composition');
+
     const context: ContentAnalysisContext = {
       source_type: sourceType,
       source_url: sourceType === 'url' ? sourceUrl : undefined,
@@ -137,6 +141,11 @@ export function useContentAnalysis({ userId, tgChatId, postId }: UseContentAnaly
       composition_description: selectedOptions.includes('use_composition') ? analysisResult.composition_description : undefined,
       scene_description: selectedOptions.includes('use_scene') ? analysisResult.scene_description : undefined,
       analysis_cost: cost,
+
+      // Include reference media URLs for generation
+      reference_image_url: analysisResult.image_url,
+      reference_video_url: analysisResult.video_url,
+      use_reference_image: needsReferenceImage && !!analysisResult.image_url,
     };
 
     setAnalysisContext(context);

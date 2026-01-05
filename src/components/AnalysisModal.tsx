@@ -147,17 +147,51 @@ export function AnalysisModal({
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          {/* Content type indicator */}
-          <div className="text-sm text-muted-foreground">
-            {isRussian ? 'Тип контента: ' : 'Content type: '}
-            <span className="font-medium text-foreground">
-              {analysisResult.content_type === 'post' && (isRussian ? 'Пост' : 'Post')}
-              {analysisResult.content_type === 'image' && (isRussian ? 'Изображение' : 'Image')}
-              {analysisResult.content_type === 'video' && (isRussian ? 'Видео' : 'Video')}
-              {analysisResult.has_image && ` + ${isRussian ? 'изображение' : 'image'}`}
-              {analysisResult.has_video && ` + ${isRussian ? 'видео' : 'video'}`}
-            </span>
+          {/* Platform and content type indicator */}
+          <div className="text-sm text-muted-foreground space-y-1">
+            {/* Platform */}
+            {analysisResult.platform_name && (
+              <div>
+                {isRussian ? 'Платформа: ' : 'Platform: '}
+                <span className="font-medium text-foreground">
+                  {analysisResult.platform_name}
+                  {analysisResult.author && ` (@${analysisResult.author})`}
+                </span>
+              </div>
+            )}
+            {/* Content type */}
+            <div>
+              {isRussian ? 'Тип контента: ' : 'Content type: '}
+              <span className="font-medium text-foreground">
+                {analysisResult.content_type === 'post' && (isRussian ? 'Пост' : 'Post')}
+                {analysisResult.content_type === 'image' && (isRussian ? 'Изображение' : 'Image')}
+                {analysisResult.content_type === 'video' && (isRussian ? 'Видео' : 'Video')}
+                {analysisResult.has_image && ` + ${isRussian ? 'изображение' : 'image'}`}
+                {analysisResult.has_video && ` + ${isRussian ? 'видео' : 'video'}`}
+              </span>
+            </div>
           </div>
+
+          {/* Media preview */}
+          {analysisResult.image_url && (
+            <div className="space-y-2">
+              <p className="text-sm text-muted-foreground">
+                {isRussian ? 'Найденный медиа-контент:' : 'Found media content:'}
+              </p>
+              <div className="rounded-lg overflow-hidden border border-border">
+                <img
+                  src={analysisResult.image_url}
+                  alt="Analyzed content"
+                  className="w-full h-32 object-cover"
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {isRussian
+                  ? 'Выберите "Использовать стиль" или "Использовать композицию" для генерации похожего изображения'
+                  : 'Select "Use style" or "Use composition" to generate similar image'}
+              </p>
+            </div>
+          )}
 
           {/* Options checkboxes */}
           <div className="space-y-3">

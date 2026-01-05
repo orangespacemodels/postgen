@@ -1,16 +1,35 @@
 services:
-  post-miniapp:
+  frontend:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: post-miniapp
+    container_name: post-miniapp-frontend
     restart: unless-stopped
     ports:
       - "9000:80"
     environment:
       - NODE_ENV=production
+    depends_on:
+      - backend
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: post-miniapp-backend
+    restart: unless-stopped
+    ports:
+      - "9001:8000"
+    env_file:
+      - ./backend/.env
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3

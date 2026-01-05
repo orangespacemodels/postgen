@@ -18,6 +18,7 @@ interface ImageGenerationModalProps {
   initialCaptions: string;
   language: string;
   isLoading?: boolean;
+  referenceImageUrl?: string;  // Reference image for style transfer
 }
 
 export function ImageGenerationModal({
@@ -28,6 +29,7 @@ export function ImageGenerationModal({
   initialCaptions,
   language,
   isLoading = false,
+  referenceImageUrl,
 }: ImageGenerationModalProps) {
   const [sceneDescription, setSceneDescription] = useState(initialSceneDescription);
   const [captions, setCaptions] = useState(initialCaptions);
@@ -80,6 +82,27 @@ export function ImageGenerationModal({
         </CardHeader>
 
         <CardContent className="space-y-4">
+          {/* Reference Image Preview */}
+          {referenceImageUrl && (
+            <div className="space-y-2">
+              <label className="text-sm font-medium">
+                {isRussian ? 'Референс изображение' : 'Reference Image'}
+              </label>
+              <div className="rounded-lg overflow-hidden border border-border">
+                <img
+                  src={referenceImageUrl}
+                  alt="Reference"
+                  className="w-full h-32 object-cover"
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {isRussian
+                  ? 'Стиль и композиция будут взяты из этого изображения'
+                  : 'Style and composition will be taken from this image'}
+              </p>
+            </div>
+          )}
+
           {/* Scene Description */}
           <div className="space-y-2">
             <label className="text-sm font-medium">
