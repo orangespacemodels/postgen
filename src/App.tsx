@@ -12,7 +12,7 @@ import { ContentAnalyzer } from '@/components/ContentAnalyzer';
 import { AnalysisModal } from '@/components/AnalysisModal';
 import { ImageGenerationModal } from '@/components/ImageGenerationModal';
 import { TextGenerationModal } from '@/components/TextGenerationModal';
-import { Mic, MicOff, Wand2, FileText, Image, Loader2, Send, Coins } from 'lucide-react';
+import { Mic, MicOff, Wand2, FileText, Image, Loader2, Send, Coins, Copy, Check } from 'lucide-react';
 import { PRICING, type ImageGenerationParams, type TextGenerationParams } from '@/types';
 import { translations, type Language } from '@/lib/i18n';
 
@@ -38,6 +38,7 @@ function App() {
   const [prompt, setPrompt] = useState('');
   const [showImageModal, setShowImageModal] = useState(false);
   const [showTextModal, setShowTextModal] = useState(false);
+  const [copiedFormat, setCopiedFormat] = useState<'formatted' | 'markdown' | null>(null);
 
   // Get language with fallback to Russian
   const lang: Language = (user?.language === 'en' ? 'en' : 'ru');
@@ -150,6 +151,37 @@ function App() {
 
   const handleTextModalClose = () => {
     setShowTextModal(false);
+  };
+
+  // Copy text to clipboard
+  const handleCopyText = async (format: 'formatted' | 'markdown') => {
+    if (!generatedText) return;
+
+    try {
+      if (format === 'markdown') {
+        // Copy raw markdown
+        await navigator.clipboard.writeText(generatedText);
+      } else {
+        // Copy as formatted plain text (convert markdown to plain with formatting preserved)
+        // Remove markdown syntax but keep structure
+        const plainText = generatedText
+          .replace(/\*\*(.+?)\*\*/g, '$1')  // Remove bold markers
+          .replace(/\*(.+?)\*/g, '$1')       // Remove italic markers
+          .replace(/__(.+?)__/g, '$1')       // Remove bold markers
+          .replace(/_(.+?)_/g, '$1')         // Remove italic markers
+          .replace(/~~(.+?)~~/g, '$1')       // Remove strikethrough
+          .replace(/`(.+?)`/g, '$1');        // Remove code markers
+        await navigator.clipboard.writeText(plainText);
+      }
+
+      setCopiedFormat(format);
+      toast.success(lang === 'ru' ? 'Скопировано!' : 'Copied!');
+
+      // Reset copied state after 2 seconds
+      setTimeout(() => setCopiedFormat(null), 2000);
+    } catch {
+      toast.error(lang === 'ru' ? 'Не удалось скопировать' : 'Failed to copy');
+    }
   };
 
   const handleGenImage = async () => {
@@ -379,7 +411,37 @@ function App() {
             <CardContent className="space-y-4">
               {generatedText && (
                 <div className="space-y-2">
-                  <p className="text-sm font-medium text-muted-foreground">{t('generatedText')}</p>
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-medium text-muted-foreground">{t('generatedText')}</p>
+                    <div className="flex gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleCopyText('formatted')}
+                        className="h-7 px-2 text-xs"
+                      >
+                        {copiedFormat === 'formatted' ? (
+                          <Check className="h-3 w-3 mr-1" />
+                        ) : (
+                          <Copy className="h-3 w-3 mr-1" />
+                        )}
+                        {lang === 'ru' ? 'Текст' : 'Text'}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleCopyText('markdown')}
+                        className="h-7 px-2 text-xs"
+                      >
+                        {copiedFormat === 'markdown' ? (
+                          <Check className="h-3 w-3 mr-1" />
+                        ) : (
+                          <Copy className="h-3 w-3 mr-1" />
+                        )}
+                        MD
+                      </Button>
+                    </div>
+                  </div>
                   <div className="p-3 bg-secondary rounded-lg">
                     <div
                       className="text-sm prose prose-sm prose-invert max-w-none"
