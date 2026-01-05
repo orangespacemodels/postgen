@@ -89,8 +89,29 @@ async def debug_config():
         "scrapecreators_api_key_set": bool(settings.scrapecreators_api_key),
         "scrapecreators_api_key_len": len(settings.scrapecreators_api_key) if settings.scrapecreators_api_key else 0,
         "supabase_url_set": bool(settings.supabase_url),
+        "supabase_url_value": settings.supabase_url[:50] if settings.supabase_url else None,
         "supabase_anon_key_set": bool(settings.supabase_anon_key),
-        "env_scrapecreators": bool(os.getenv("SCRAPECREATORS_API_KEY")),
-        "env_supabase_url": bool(os.getenv("SUPABASE_URL")),
-        "env_supabase_anon": bool(os.getenv("SUPABASE_ANON_KEY")),
+        "supabase_anon_key_len": len(settings.supabase_anon_key) if settings.supabase_anon_key else 0,
     }
+
+
+@router.get("/debug/supabase/{user_id}")
+async def debug_supabase(user_id: int):
+    """Debug: Test Supabase connection."""
+    settings = get_settings()
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        headers = {
+            "apikey": settings.supabase_anon_key,
+            "Authorization": f"Bearer {settings.supabase_anon_key}",
+        }
+
+        # Test the exact URL format
+        url = f"{settings.supabase_url}/rest/v1/user_data?select=balance&user_id=eq.{user_id}"
+        response = await client.get(url, headers=headers)
+
+        return {
+            "url": url,
+            "status_code": response.status_code,
+            "response_text": response.text[:500] if response.text else None,
+            "headers_sent": str(dict(headers))[:100],
+        }
