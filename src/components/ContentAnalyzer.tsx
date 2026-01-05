@@ -1,7 +1,8 @@
 import { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Link, Upload, Loader2, X, CheckCircle } from 'lucide-react';
+import { Link, Upload, Loader2, X, CheckCircle, Camera } from 'lucide-react';
+import { CameraModal } from './CameraModal';
 import type { ContentAnalysisContext } from '@/types';
 
 interface ContentAnalyzerProps {
@@ -26,6 +27,7 @@ export function ContentAnalyzer({
   disabled = false,
 }: ContentAnalyzerProps) {
   const [url, setUrl] = useState('');
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isRussian = language === 'ru';
 
@@ -48,6 +50,10 @@ export function ContentAnalyzer({
 
   const handleUploadClick = () => {
     fileInputRef.current?.click();
+  };
+
+  const handleCameraCapture = (file: File) => {
+    onAnalyzeFile(file);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -153,10 +159,10 @@ export function ContentAnalyzer({
           <div className="flex-1 h-px bg-border" />
         </div>
 
-        {/* File Upload */}
+        {/* File Upload / Camera */}
         <div className="space-y-2">
           <label className="text-sm text-muted-foreground">
-            {isRussian ? 'Загрузить файл' : 'Upload file'}
+            {isRussian ? 'Загрузить файл или снять' : 'Upload file or capture'}
           </label>
           <input
             ref={fileInputRef}
@@ -166,25 +172,43 @@ export function ContentAnalyzer({
             className="hidden"
             disabled={isAnalyzing || disabled}
           />
-          <Button
-            variant="outline"
-            className="w-full"
-            onClick={handleUploadClick}
-            disabled={isAnalyzing || disabled}
-          >
-            {isAnalyzing ? (
-              <Loader2 className="h-4 w-4 animate-spin mr-2" />
-            ) : (
-              <Upload className="h-4 w-4 mr-2" />
-            )}
-            {isRussian ? 'Выбрать изображение или видео' : 'Select image or video'}
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={handleUploadClick}
+              disabled={isAnalyzing || disabled}
+            >
+              {isAnalyzing ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : (
+                <Upload className="h-4 w-4 mr-2" />
+              )}
+              {isRussian ? 'Выбрать файл' : 'Select file'}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => setIsCameraOpen(true)}
+              disabled={isAnalyzing || disabled}
+            >
+              <Camera className="h-4 w-4 mr-2" />
+              {isRussian ? 'Камера' : 'Camera'}
+            </Button>
+          </div>
           <p className="text-[10px] text-muted-foreground text-center">
             {isRussian
               ? 'JPG, PNG, GIF, WEBP, MP4, MOV, WEBM до 50 МБ'
               : 'JPG, PNG, GIF, WEBP, MP4, MOV, WEBM up to 50 MB'}
           </p>
         </div>
+
+        {/* Camera Modal */}
+        <CameraModal
+          isOpen={isCameraOpen}
+          onClose={() => setIsCameraOpen(false)}
+          onCapture={handleCameraCapture}
+          language={language}
+        />
 
         {/* Error display */}
         {error && (

@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { generateText, generateImage, improvePrompt, prepareImage } from '@/lib/api';
 import { IMAGE_STYLES, type ImageGenerationParams } from '@/types';
+import { detectLanguage } from '@/lib/i18n';
 
 export interface PreparedImageData {
   sceneDescription: string;
@@ -39,6 +40,10 @@ export function useGeneration({ userId, tgChatId, postId }: UseGenerationOptions
     setError(null);
 
     try {
+      // Detect language from the prompt text
+      const detectedLanguage = detectLanguage(prompt);
+      console.log(`[useGeneration] Detected language: ${detectedLanguage} for prompt: "${prompt.substring(0, 50)}..."`);
+
       const result = await generateText({
         prompt,
         user_id: userId,
@@ -47,6 +52,8 @@ export function useGeneration({ userId, tgChatId, postId }: UseGenerationOptions
         // Pass narrative context for rewriting posts
         narrative: options?.narrative,
         format_description: options?.format_description,
+        // Pass detected language for generation
+        language: detectedLanguage,
       });
       setGeneratedText(result.text);
     } catch (err) {
@@ -85,6 +92,10 @@ export function useGeneration({ userId, tgChatId, postId }: UseGenerationOptions
     setError(null);
 
     try {
+      // Detect language from the prompt text
+      const detectedLanguage = detectLanguage(prompt);
+      console.log(`[useGeneration] Image gen - Detected language: ${detectedLanguage} for prompt: "${prompt.substring(0, 50)}..."`);
+
       // Build request with optional modal parameters
       const requestParams: Parameters<typeof generateImage>[0] = {
         prompt,
@@ -92,6 +103,7 @@ export function useGeneration({ userId, tgChatId, postId }: UseGenerationOptions
         tg_chat_id: effectiveTgChatId,
         post_id: postId || undefined,
         generated_text: generatedText || '',
+        language: detectedLanguage,
       };
 
       // Add modal parameters if provided
@@ -146,10 +158,15 @@ export function useGeneration({ userId, tgChatId, postId }: UseGenerationOptions
     setError(null);
 
     try {
+      // Detect language from the prompt text
+      const detectedLanguage = detectLanguage(prompt);
+      console.log(`[useGeneration] Prepare image - Detected language: ${detectedLanguage}`);
+
       const result = await prepareImage({
         prompt,
         user_id: effectiveUserId,
         generated_text: generatedText || '',
+        language: detectedLanguage,
       });
 
       const prepared: PreparedImageData = {
@@ -177,10 +194,15 @@ export function useGeneration({ userId, tgChatId, postId }: UseGenerationOptions
     setError(null);
 
     try {
+      // Detect language from the prompt text
+      const detectedLanguage = detectLanguage(prompt);
+      console.log(`[useGeneration] Improve prompt - Detected language: ${detectedLanguage}`);
+
       const improved = await improvePrompt({
         prompt,
         user_id: userId,
         post_id: postId || undefined,
+        language: detectedLanguage,
       });
       return improved;
     } catch (err) {

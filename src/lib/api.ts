@@ -41,6 +41,8 @@ export interface GenerateTextRequest {
   // Context from content analysis (for rewriting posts)
   narrative?: string;           // Original post narrative to rewrite
   format_description?: string;  // Format structure to follow
+  // Language for generation (detected from prompt)
+  language?: 'ru' | 'en';       // Generate content in this language
 }
 
 export interface GenerateImageRequest {
@@ -59,18 +61,24 @@ export interface GenerateImageRequest {
   reference_image_url?: string;
   use_reference_for_style?: boolean;
   use_reference_for_composition?: boolean;
+  // Language for captions and scene description (detected from prompt)
+  language?: 'ru' | 'en';
 }
 
 export interface ImprovePromptRequest {
   prompt: string;
   user_id: number;
   post_id?: number;
+  // Language for improved prompt (detected from original prompt)
+  language?: 'ru' | 'en';
 }
 
 export interface PrepareImageRequest {
   prompt: string;
   user_id: number;
   generated_text?: string;
+  // Language for scene description and captions (detected from prompt)
+  language?: 'ru' | 'en';
 }
 
 export interface PrepareImageResponse {
@@ -167,6 +175,7 @@ export async function prepareImage(request: PrepareImageRequest): Promise<Prepar
       generated_text: request.generated_text || '',
       current_date: currentDate,
       prepare_only: true, // This flag tells workflow to return scene + captions without generating image
+      language: request.language, // Language for scene description and captions
     }),
   });
 
@@ -256,6 +265,11 @@ export async function generateImage(request: GenerateImageRequest): Promise<{ im
     payload.reference_image_url = request.reference_image_url;
     payload.use_reference_for_style = request.use_reference_for_style || false;
     payload.use_reference_for_composition = request.use_reference_for_composition || false;
+  }
+
+  // Add language parameter for captions generation
+  if (request.language) {
+    payload.language = request.language;
   }
 
   const response = await fetch(GENERATE_IMAGE_URL, {

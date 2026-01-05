@@ -120,3 +120,32 @@ export function t(key: keyof typeof translations, language: Language): string {
   }
   return key;
 }
+
+/**
+ * Detect language from text content.
+ * Returns 'ru' if text contains significant Cyrillic characters, 'en' otherwise.
+ * Uses a threshold of 30% Cyrillic characters to determine Russian.
+ */
+export function detectLanguage(text: string): Language {
+  if (!text || text.trim().length === 0) {
+    return 'en'; // Default to English for empty text
+  }
+
+  // Count Cyrillic characters (Russian alphabet range)
+  const cyrillicRegex = /[\u0400-\u04FF]/g;
+  const cyrillicMatches = text.match(cyrillicRegex);
+  const cyrillicCount = cyrillicMatches ? cyrillicMatches.length : 0;
+
+  // Count all letter characters (excluding spaces, numbers, punctuation)
+  const letterRegex = /[a-zA-Z\u0400-\u04FF]/g;
+  const letterMatches = text.match(letterRegex);
+  const letterCount = letterMatches ? letterMatches.length : 0;
+
+  if (letterCount === 0) {
+    return 'en'; // Default to English for text without letters
+  }
+
+  // If more than 30% of letters are Cyrillic, consider it Russian
+  const cyrillicRatio = cyrillicCount / letterCount;
+  return cyrillicRatio > 0.3 ? 'ru' : 'en';
+}
