@@ -34,10 +34,10 @@ export function useUser() {
   useEffect(() => {
     const loadUser = async () => {
       try {
-        // Get user_id and tg_chat_id from URL params (passed by n8n workflow)
+        // Get internal_token from URL params (passed by n8n workflow)
+        // Security: We no longer expose user_id in URL, only internal_token
         const urlParams = new URLSearchParams(window.location.search);
-        const userIdParam = urlParams.get('user_id');
-        const tgChatIdParam = urlParams.get('tg_chat_id');
+        const internalToken = urlParams.get('internal_token');
 
         // Initialize Telegram WebApp if available
         const tgWebApp = window.Telegram?.WebApp;
@@ -46,36 +46,37 @@ export function useUser() {
           tgWebApp.expand();
         }
 
-        if (!userIdParam) {
-          console.error('[useUser] No user_id in URL params');
-          setError('Missing user_id. Please open this app from Telegram bot.');
+        if (!internalToken) {
+          console.error('[useUser] No internal_token in URL params');
+          setError('Missing internal_token. Please open this app from Telegram bot.');
           setLoading(false);
           return;
         }
 
-        const dbUserId = parseInt(userIdParam, 10);
-        const tgChatId = tgChatIdParam ? parseInt(tgChatIdParam, 10) : null;
-        console.log('[useUser] Got user_id:', dbUserId, 'tg_chat_id:', tgChatId);
+        console.log('[useUser] Got internal_token, fetching user data...');
 
-        // Fetch user data from Supabase by internal DB id
+        // Fetch user data from Supabase by internal_token
         const { data, error: fetchError } = await supabase
           .from('user_data')
           .select('id, tg_chat_id, username, plan, balance, language')
-          .eq('id', dbUserId)
+          .eq('internal_token', internalToken)
           .single();
 
         if (fetchError) {
-          console.error('Error fetching user:', fetchError);
-          // Use fallback data from URL params
-          setUser({
-            id: dbUserId,
-            tg_chat_id: tgChatId || dbUserId,
-            plan: 'Free',
-            units: 0,
-            language: 'ru',
-          });
-        } else if (data) {
+          console.error('[useUser] Error fetching user by internal_token:', fetchError);
+          setError('Invalid token. Please open this app from Telegram bot.');
+          setLoading(false);
+          return;
+        }
+
+        if (data) {
           const balance = data.balance || 0;
+
+          console.log('[useUser] User found:', {
+            id: data.id,
+            tg_chat_id: data.tg_chat_id,
+            username: data.username,
+          });
 
           // Check if balance is negative - block access
           if (balance < 0) {

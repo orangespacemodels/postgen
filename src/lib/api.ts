@@ -13,34 +13,20 @@ const GENERATE_TEXT_URL = `${N8N_BASE_URL}/post-generate-text`;
 const GENERATE_IMAGE_URL = `${N8N_BASE_URL}/post-generate-image-v2`;
 
 // =====================================================
-// Helper to get user_id - EXACTLY like carousel does it
-// Priority: 1. URL tg_chat_id, 2. Telegram WebApp API, 3. URL user_id
+// Helper to get user_id from Telegram WebApp API
+// NOTE: URL params no longer contain user_id for security reasons
+// User data should be passed explicitly from useUser() hook
 // =====================================================
-export function getUserId(): number | null {
-  const urlParams = new URLSearchParams(window.location.search);
-  let userId: number | null = null;
-
-  // 1. Try to get from URL parameter tg_chat_id (from N8N)
-  const tgChatIdParam = urlParams.get('tg_chat_id');
-  if (tgChatIdParam) {
-    userId = parseInt(tgChatIdParam, 10);
-    console.log('[getUserId] Got from tg_chat_id param:', userId);
-  }
-  // 2. Try to get from Telegram Web App API
-  else if ((window as any).Telegram?.WebApp?.initDataUnsafe?.user?.id) {
-    userId = (window as any).Telegram.WebApp.initDataUnsafe.user.id;
-    console.log('[getUserId] Got from Telegram WebApp:', userId);
-  }
-  // 3. Try to get from user_id param as fallback
-  else {
-    const userIdParam = urlParams.get('user_id');
-    if (userIdParam) {
-      userId = parseInt(userIdParam, 10);
-      console.log('[getUserId] Got from user_id param:', userId);
-    }
+export function getUserIdFromTelegramWebApp(): number | null {
+  // Only fallback: Try to get from Telegram Web App API
+  if ((window as any).Telegram?.WebApp?.initDataUnsafe?.user?.id) {
+    const userId = (window as any).Telegram.WebApp.initDataUnsafe.user.id;
+    console.log('[getUserIdFromTelegramWebApp] Got from Telegram WebApp:', userId);
+    return userId;
   }
 
-  return userId;
+  console.warn('[getUserIdFromTelegramWebApp] No user_id available from Telegram WebApp');
+  return null;
 }
 
 // Content analysis - use local backend API (proxied via nginx)
@@ -142,8 +128,10 @@ export async function generateText(request: GenerateTextRequest): Promise<{ text
 // Prepare image generation - generates scene_description and captions via AI
 // Uses the same workflow with prepare_only=true flag
 export async function prepareImage(request: PrepareImageRequest): Promise<PrepareImageResponse> {
-  const userId = getUserId();
-  const effectiveUserId = (request.user_id && request.user_id > 0) ? request.user_id : userId;
+  // user_id should be passed explicitly from useUser() hook
+  // Telegram WebApp API is only a fallback
+  const telegramUserId = getUserIdFromTelegramWebApp();
+  const effectiveUserId = (request.user_id && request.user_id > 0) ? request.user_id : telegramUserId;
 
   if (!effectiveUserId || effectiveUserId <= 0) {
     throw new Error('User not authenticated. Please reload the app.');
@@ -200,13 +188,14 @@ export async function prepareImage(request: PrepareImageRequest): Promise<Prepar
 const IMAGE_GENERATION_PRICE = 0.10; // $0.10 per image
 
 export async function generateImage(request: GenerateImageRequest): Promise<{ image_url: string }> {
-  // Get user_id DIRECTLY from URL/Telegram API - exactly like carousel does
-  const userId = getUserId();
+  // user_id should be passed explicitly from useUser() hook
+  // Telegram WebApp API is only a fallback
+  const telegramUserId = getUserIdFromTelegramWebApp();
 
-  console.log('[generateImage] Request user_id:', request.user_id, 'getUserId():', userId);
+  console.log('[generateImage] Request user_id:', request.user_id, 'telegramUserId:', telegramUserId);
 
-  // Use userId from getUserId() if request.user_id is invalid
-  const effectiveUserId = (request.user_id && request.user_id > 0) ? request.user_id : userId;
+  // Use telegramUserId as fallback if request.user_id is invalid
+  const effectiveUserId = (request.user_id && request.user_id > 0) ? request.user_id : telegramUserId;
 
   if (!effectiveUserId || effectiveUserId <= 0) {
     console.error('[generateImage] No valid user_id found!');
