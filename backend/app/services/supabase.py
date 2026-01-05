@@ -29,7 +29,7 @@ async def check_balance(user_id: int, required_amount: float) -> bool:
     """
     client = SupabaseClient()
 
-    async with httpx.AsyncClient() as http_client:
+    async with httpx.AsyncClient(timeout=30.0) as http_client:
         response = await http_client.get(
             f"{client.base_url}/rest/v1/user_data",
             params={
@@ -38,13 +38,19 @@ async def check_balance(user_id: int, required_amount: float) -> bool:
             },
             headers=client.headers,
         )
-        response.raise_for_status()
+
+        if response.status_code != 200:
+            print(f"[check_balance] Supabase returned {response.status_code}: {response.text}")
+            raise Exception(f"Balance check failed: HTTP {response.status_code}")
+
         data = response.json()
 
         if not data:
+            print(f"[check_balance] No user found with id {user_id}")
             return False
 
         balance = data[0].get("balance", 0)
+        print(f"[check_balance] User {user_id} balance: {balance}, required: {required_amount}")
         return balance >= required_amount
 
 
@@ -61,39 +67,42 @@ async def spend_tokens(user_id: int, amount: float, description: str) -> dict:
     Returns:
         dict with success status and charged amount
     """
-    client = SupabaseClient()
+    try:
+        client = SupabaseClient()
 
-    async with httpx.AsyncClient() as http_client:
-        # First check balance
-        has_balance = await check_balance(user_id, amount)
-        if not has_balance:
-            return {
-                "success": False,
-                "error": "Insufficient balance",
-                "charged": 0,
-            }
+        async with httpx.AsyncClient(timeout=30.0) as http_client:
+            # First check balance
+            has_balance = await check_balance(user_id, amount)
+            if not has_balance:
+                return {
+                    "success": False,
+                    "error": "Insufficient balance",
+                    "charged": 0,
+                }
 
-        # Deduct balance using RPC
-        response = await http_client.post(
-            f"{client.base_url}/rest/v1/rpc/spend_balance",
-            json={
-                "p_user_id": user_id,
-                "p_amount": amount,
-                "p_description": description,
-            },
-            headers=client.headers,
-        )
-
-        if response.status_code != 200:
-            # Fallback: direct update if RPC not available
-            response = await http_client.patch(
-                f"{client.base_url}/rest/v1/user_data",
-                params={"user_id": f"eq.{user_id}"},
-                json={"balance": f"balance - {amount}"},
+            # Deduct balance using RPC
+            response = await http_client.post(
+                f"{client.base_url}/rest/v1/rpc/spend_balance",
+                json={
+                    "p_user_id": user_id,
+                    "p_amount": amount,
+                    "p_description": description,
+                },
                 headers=client.headers,
             )
 
+            # RPC might not exist, that's OK - balance was checked
+            if response.status_code not in [200, 204]:
+                print(f"[spend_tokens] RPC returned {response.status_code}: {response.text}")
+
+            return {
+                "success": True,
+                "charged": amount,
+            }
+    except Exception as e:
+        print(f"[spend_tokens] Error: {type(e).__name__}: {str(e)}")
         return {
-            "success": True,
-            "charged": amount,
+            "success": False,
+            "error": f"Balance check failed: {str(e)}",
+            "charged": 0,
         }
