@@ -9,8 +9,7 @@ services:
       - "9000:80"
     environment:
       - NODE_ENV=production
-    depends_on:
-      - backend
+    # Note: frontend works independently
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost/health"]
       interval: 30s
@@ -26,8 +25,11 @@ services:
     restart: unless-stopped
     ports:
       - "9001:8000"
-    env_file:
-      - ./backend/.env
+    environment:
+      # These should be set in Coolify
+      - SCRAPECREATORS_API_KEY=${SCRAPECREATORS_API_KEY}
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
       interval: 30s

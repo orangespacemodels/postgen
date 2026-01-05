@@ -44,11 +44,8 @@ export function getUserId(): number | null {
 }
 
 // Content analysis - use local backend API (proxied via nginx)
-// Falls back to n8n if backend is unavailable
 const BACKEND_API_URL = '/api';
 const CONTENT_ANALYZE_URL_BACKEND = `${BACKEND_API_URL}/analyze-url`;
-// Legacy n8n URL for fallback
-const CONTENT_ANALYZE_URL_N8N = `${N8N_BASE_URL}/post-content-analyze`;
 
 export interface GenerateTextRequest {
   prompt: string;
@@ -446,64 +443,28 @@ const PRICING = {
   VIDEO_ANALYSIS_PER_MIN: 0.30,
 };
 
-// Analyze content from URL (Instagram, TikTok, etc.)
-// Uses backend API with ScrapeCreators, falls back to n8n if backend unavailable
+// Analyze content from URL (Instagram, TikTok, YouTube, LinkedIn, etc.)
+// Uses backend API with ScrapeCreators
 export async function analyzeContentUrl(
   url: string,
   userId: number,
   postId?: number
 ): Promise<AnalysisResult> {
-  // First, try to use local backend API (proxied via nginx)
-  let response: Response;
-  let useBackend = true;
+  console.log('[analyzeContentUrl] Calling backend API...');
 
-  try {
-    console.log('[analyzeContentUrl] Trying backend API...');
-    response = await fetch(CONTENT_ANALYZE_URL_BACKEND, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url, user_id: userId, post_id: postId }),
-    });
+  const response = await fetch(CONTENT_ANALYZE_URL_BACKEND, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url, user_id: userId, post_id: postId }),
+  });
 
-    if (!response.ok) {
-      throw new Error(`Backend returned ${response.status}`);
-    }
-    console.log('[analyzeContentUrl] Backend API success');
-  } catch (backendError) {
-    // Fallback to n8n if backend is unavailable
-    console.warn('[analyzeContentUrl] Backend unavailable, falling back to n8n:', backendError);
-    useBackend = false;
-
-    // Charge for URL analysis when using n8n (backend handles its own charging)
-    const spendResult = await spendTokens(
-      userId,
-      PRICING.URL_ANALYSIS,
-      `URL analysis: ${url}`
-    );
-
-    if (!spendResult.success) {
-      throw new Error(spendResult.error || 'Insufficient funds for URL analysis');
-    }
-
-    console.log(`💰 Charged $${spendResult.charged} for URL analysis`);
-
-    response = await fetch(CONTENT_ANALYZE_URL_N8N, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url, user_id: userId, post_id: postId }),
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error || 'Failed to analyze URL content');
-    }
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.detail || errorData.error || `Analysis failed: ${response.status}`);
   }
 
   const data = await response.json();
-
-  if (!data.success && !useBackend) {
-    throw new Error(data.error || 'Failed to analyze content');
-  }
+  console.log('[analyzeContentUrl] Backend API success');
 
   return {
     content_type: data.content_type || 'post',
