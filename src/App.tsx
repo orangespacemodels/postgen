@@ -11,8 +11,9 @@ import { useSession } from '@/hooks/useSession';
 import { ContentAnalyzer } from '@/components/ContentAnalyzer';
 import { AnalysisModal } from '@/components/AnalysisModal';
 import { ImageGenerationModal } from '@/components/ImageGenerationModal';
+import { TextGenerationModal } from '@/components/TextGenerationModal';
 import { Mic, MicOff, Wand2, FileText, Image, Loader2, Send, Coins } from 'lucide-react';
-import { PRICING, type ImageGenerationParams } from '@/types';
+import { PRICING, type ImageGenerationParams, type TextGenerationParams } from '@/types';
 import { translations, type Language } from '@/lib/i18n';
 
 // Simple markdown to HTML converter for basic formatting
@@ -36,6 +37,7 @@ function App() {
   const { user, loading: userLoading, error: userError } = useUser();
   const [prompt, setPrompt] = useState('');
   const [showImageModal, setShowImageModal] = useState(false);
+  const [showTextModal, setShowTextModal] = useState(false);
 
   // Get language with fallback to Russian
   const lang: Language = (user?.language === 'en' ? 'en' : 'ru');
@@ -127,11 +129,27 @@ function App() {
   };
 
   const handleGenText = () => {
+    if (!prompt.trim()) {
+      toast.error(t('enterPromptFirst'));
+      return;
+    }
+    // Open text generation modal
+    setShowTextModal(true);
+  };
+
+  const handleTextModalConfirm = (params: TextGenerationParams) => {
+    // Close modal and start generation with modal parameters
+    setShowTextModal(false);
+
     // Pass narrative/format context if available from content analysis
     handleGenerateText(prompt, {
       narrative: analysisContext?.narrative,
       format_description: analysisContext?.format_description,
-    });
+    }, params);
+  };
+
+  const handleTextModalClose = () => {
+    setShowTextModal(false);
   };
 
   const handleGenImage = async () => {
@@ -431,6 +449,17 @@ function App() {
         language={lang}
         isLoading={isGeneratingImage}
         referenceImageUrl={analysisContext?.use_reference_image ? analysisContext.reference_image_url : undefined}
+      />
+
+      {/* Text Generation Modal */}
+      <TextGenerationModal
+        isOpen={showTextModal}
+        onClose={handleTextModalClose}
+        onConfirm={handleTextModalConfirm}
+        prompt={prompt}
+        language={lang}
+        isLoading={isGeneratingText}
+        suggestedCta=""
       />
 
       <Toaster />

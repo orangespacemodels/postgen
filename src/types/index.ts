@@ -182,3 +182,40 @@ export interface ImageGenerationParams {
   useReferenceForStyle?: boolean;      // Apply style from reference
   useReferenceForComposition?: boolean; // Apply composition from reference
 }
+
+// Text generation formatting options
+export type TextFormatting = 'none' | 'simple' | 'markdown';
+
+// Text length presets
+export type TextLength = 'short' | 'medium' | 'long';
+
+export const TEXT_LENGTH_PRESETS: { value: TextLength; wordsRu: string; wordsEn: string; range: [number, number] }[] = [
+  { value: 'short', wordsRu: '50-100 слов', wordsEn: '50-100 words', range: [50, 100] },
+  { value: 'medium', wordsRu: '150-250 слов', wordsEn: '150-250 words', range: [150, 250] },
+  { value: 'long', wordsRu: '300-500 слов', wordsEn: '300-500 words', range: [300, 500] },
+];
+
+// Emoji density presets
+export type EmojiDensity = 'none' | 'few' | 'moderate' | 'many';
+
+export const EMOJI_DENSITY_PRESETS: { value: EmojiDensity; labelRu: string; labelEn: string; description: string }[] = [
+  { value: 'none', labelRu: 'Без эмодзи', labelEn: 'No emojis', description: '0' },
+  { value: 'few', labelRu: 'Немного', labelEn: 'Few', description: '1-2' },
+  { value: 'moderate', labelRu: 'Умеренно', labelEn: 'Moderate', description: '3-5' },
+  { value: 'many', labelRu: 'Много', labelEn: 'Many', description: '6+' },
+];
+
+export const TEXT_FORMATTING_OPTIONS: { value: TextFormatting; labelRu: string; labelEn: string; descriptionRu: string; descriptionEn: string }[] = [
+  { value: 'none', labelRu: 'Без форматирования', labelEn: 'No formatting', descriptionRu: 'Простой текст', descriptionEn: 'Plain text' },
+  { value: 'simple', labelRu: 'Простое', labelEn: 'Simple', descriptionRu: 'Telegram-совместимое (жирный, курсив)', descriptionEn: 'Telegram-compatible (bold, italic)' },
+  { value: 'markdown', labelRu: 'Маркдаун', labelEn: 'Markdown', descriptionRu: 'Полное MD-форматирование', descriptionEn: 'Full markdown formatting' },
+];
+
+// Text generation modal parameters
+export interface TextGenerationParams {
+  textLength: TextLength;
+  emojiDensity: EmojiDensity;
+  formatting: TextFormatting;
+  language: 'ru' | 'en';
+  callToAction: string;  // Empty string means auto-generate from context
+}

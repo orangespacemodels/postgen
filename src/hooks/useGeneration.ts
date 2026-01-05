@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import { generateText, generateImage, improvePrompt, prepareImage } from '@/lib/api';
-import { IMAGE_STYLES, type ImageGenerationParams } from '@/types';
+import { IMAGE_STYLES, type ImageGenerationParams, type TextGenerationParams } from '@/types';
 import { detectLanguage } from '@/lib/i18n';
 
 export interface PreparedImageData {
@@ -29,7 +29,8 @@ export function useGeneration({ userId, tgChatId, postId }: UseGenerationOptions
     options?: {
       narrative?: string;
       format_description?: string;
-    }
+    },
+    modalParams?: TextGenerationParams
   ) => {
     if (!prompt.trim()) {
       setError('Please enter a prompt');
@@ -40,9 +41,9 @@ export function useGeneration({ userId, tgChatId, postId }: UseGenerationOptions
     setError(null);
 
     try {
-      // Detect language from the prompt text
-      const detectedLanguage = detectLanguage(prompt);
-      console.log(`[useGeneration] Detected language: ${detectedLanguage} for prompt: "${prompt.substring(0, 50)}..."`);
+      // Use modal language if provided, otherwise detect from prompt
+      const language = modalParams?.language || detectLanguage(prompt);
+      console.log(`[useGeneration] Using language: ${language} for prompt: "${prompt.substring(0, 50)}..."`);
 
       const result = await generateText({
         prompt,
@@ -52,8 +53,13 @@ export function useGeneration({ userId, tgChatId, postId }: UseGenerationOptions
         // Pass narrative context for rewriting posts
         narrative: options?.narrative,
         format_description: options?.format_description,
-        // Pass detected language for generation
-        language: detectedLanguage,
+        // Pass language for generation
+        language,
+        // Pass modal parameters if provided
+        text_length: modalParams?.textLength,
+        emoji_density: modalParams?.emojiDensity,
+        formatting: modalParams?.formatting,
+        call_to_action: modalParams?.callToAction || undefined,
       });
       setGeneratedText(result.text);
     } catch (err) {

@@ -43,6 +43,11 @@ export interface GenerateTextRequest {
   format_description?: string;  // Format structure to follow
   // Language for generation (detected from prompt)
   language?: 'ru' | 'en';       // Generate content in this language
+  // Text generation modal parameters
+  text_length?: 'short' | 'medium' | 'long';     // Desired text length
+  emoji_density?: 'none' | 'few' | 'moderate' | 'many';  // Emoji usage
+  formatting?: 'none' | 'simple' | 'markdown';   // Output formatting style
+  call_to_action?: string;      // Custom CTA or empty for auto-generation
 }
 
 export interface GenerateImageRequest {
