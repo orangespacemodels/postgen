@@ -1,5 +1,5 @@
 services:
-  frontend:
+  app:
     build:
       context: .
       dockerfile: Dockerfile
@@ -8,29 +8,12 @@ services:
       - "9000:80"
     environment:
       - NODE_ENV=production
-    depends_on:
-      - backend
-    healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
-
-  backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    restart: unless-stopped
-    expose:
-      - "8000"
-    environment:
       - SCRAPECREATORS_API_KEY=${SCRAPECREATORS_API_KEY}
       - SUPABASE_URL=${SUPABASE_URL}
       - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 10s
+      start_period: 30s
