@@ -88,11 +88,10 @@ export function CameraModal({ isOpen, onClose, onCapture, language }: CameraModa
         streamRef.current.getTracks().forEach((track) => track.stop());
       }
 
+      // Don't specify ideal dimensions to use camera's native aspect ratio
       const constraints: MediaStreamConstraints = {
         video: {
           deviceId: deviceId ? { exact: deviceId } : undefined,
-          width: { ideal: 1080 },
-          height: { ideal: 1920 },
           facingMode: deviceId ? undefined : 'environment',
         },
         audio: mode === 'video',
@@ -209,6 +208,15 @@ export function CameraModal({ isOpen, onClose, onCapture, language }: CameraModa
     canvas.toBlob(
       (blob) => {
         if (!blob) return;
+
+        // Stop the live stream so the preview shows clearly
+        if (streamRef.current) {
+          streamRef.current.getTracks().forEach((track) => track.stop());
+        }
+        if (videoRef.current) {
+          videoRef.current.srcObject = null;
+        }
+
         const file = new File([blob], `photo_${Date.now()}.jpg`, { type: 'image/jpeg' });
         setCapturedMedia({
           url: URL.createObjectURL(blob),
@@ -256,6 +264,15 @@ export function CameraModal({ isOpen, onClose, onCapture, language }: CameraModa
         const blob = new Blob(chunksRef.current, { type: mimeType });
         const extension = mimeType.includes('mp4') ? 'mp4' : 'webm';
         const file = new File([blob], `video_${Date.now()}.${extension}`, { type: mimeType });
+
+        // Stop the live stream so the preview shows the recorded video, not the broadcast
+        if (streamRef.current) {
+          streamRef.current.getTracks().forEach((track) => track.stop());
+        }
+        if (videoRef.current) {
+          videoRef.current.srcObject = null;
+        }
+
         setCapturedMedia({
           url: URL.createObjectURL(blob),
           file,
@@ -396,6 +413,7 @@ export function CameraModal({ isOpen, onClose, onCapture, language }: CameraModa
         ) : capturedMedia ? (
           capturedMedia.file.type.startsWith('video') ? (
             <video
+              key="captured-video"
               src={capturedMedia.url}
               className="max-w-full max-h-full object-contain"
               controls
@@ -404,6 +422,7 @@ export function CameraModal({ isOpen, onClose, onCapture, language }: CameraModa
             />
           ) : (
             <img
+              key="captured-photo"
               src={capturedMedia.url}
               alt="Captured"
               className="max-w-full max-h-full object-contain"
@@ -411,6 +430,7 @@ export function CameraModal({ isOpen, onClose, onCapture, language }: CameraModa
           )
         ) : (
           <video
+            key="live-preview"
             ref={videoRef}
             className={`max-w-full max-h-full object-contain ${isFrontCamera ? 'scale-x-[-1]' : ''}`}
             playsInline
