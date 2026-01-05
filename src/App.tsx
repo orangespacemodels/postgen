@@ -59,8 +59,14 @@ function App() {
     tgChatId: user?.tg_chat_id || 0,
   });
 
-  const { isListening, isProcessing: isVoiceProcessing, toggleListening } = useVoiceInput({
+  const {
+    isListening,
+    isProcessing: isVoiceProcessing,
+    toggleListening,
+    waveformHistory,
+  } = useVoiceInput({
     userId: user?.id || 0,
+    maxDuration: 10000, // 10 seconds max
     onTranscript: (text) => {
       setPrompt((prev) => prev ? prev + ' ' + text : text);
       toast.success(t('voiceTranscribed'));
@@ -261,6 +267,30 @@ function App() {
                 )}
               </Button>
             </div>
+
+            {/* Voice Recording Waveform Visualization */}
+            {isListening && (
+              <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-3 h-3 bg-destructive rounded-full animate-pulse flex-shrink-0" />
+                  <span className="text-sm text-destructive font-medium flex-shrink-0">
+                    {t('recording')}
+                  </span>
+                  {/* Waveform visualization */}
+                  <div className="flex items-center gap-[2px] flex-1 h-8 overflow-hidden">
+                    {waveformHistory.map((level, index) => (
+                      <div
+                        key={index}
+                        className="flex-1 min-w-[2px] max-w-[4px] bg-destructive/70 rounded-sm transition-all duration-75"
+                        style={{
+                          height: `${Math.max(4, level * 100)}%`,
+                        }}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Magic Wand Button */}
             <Button

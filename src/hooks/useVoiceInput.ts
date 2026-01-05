@@ -1,20 +1,64 @@
-import { useState, useCallback, useRef } from 'react';
-import { transcribeVoice } from '@/lib/api';
+import { useState, useCallback, useRef, useEffect } from 'react';
+import { supabase } from '@/integrations/supabase/client';
 
 interface UseVoiceInputOptions {
   onTranscript?: (text: string) => void;
   onError?: (error: string) => void;
   userId?: number;
+  maxDuration?: number; // Maximum recording duration in ms (default: 10000)
 }
 
+const WAVEFORM_BARS = 50; // Number of bars in waveform visualization
+
 export function useVoiceInput(options: UseVoiceInputOptions = {}) {
+  const { maxDuration = 10000 } = options;
+
   const [isListening, setIsListening] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [audioLevel, setAudioLevel] = useState(0);
+  const [waveformHistory, setWaveformHistory] = useState<number[]>(Array(WAVEFORM_BARS).fill(0));
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const isRecordingRef = useRef(false);
+  const frameCounterRef = useRef(0);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Cleanup function
+  const cleanup = useCallback(() => {
+    isRecordingRef.current = false;
+    setIsListening(false);
+    setAudioLevel(0);
+    setWaveformHistory(Array(WAVEFORM_BARS).fill(0));
+
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+
+    if (audioContextRef.current) {
+      audioContextRef.current.close().catch(console.error);
+      audioContextRef.current = null;
+    }
+
+    mediaRecorderRef.current = null;
+    audioChunksRef.current = [];
+  }, []);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      cleanup();
+    };
+  }, [cleanup]);
 
   const startListening = useCallback(async () => {
     try {
@@ -29,14 +73,60 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}) {
       }
 
       // Request microphone access
+      console.log('[useVoiceInput] Requesting microphone access...');
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
 
-      // Create MediaRecorder with webm format (best compatibility)
+      // Create audio analyzer for visualization
+      const audioContext = new AudioContext();
+      audioContextRef.current = audioContext;
+      const analyser = audioContext.createAnalyser();
+      const microphone = audioContext.createMediaStreamSource(stream);
+      microphone.connect(analyser);
+      analyser.fftSize = 256;
+      analyser.smoothingTimeConstant = 0.8; // Smooth animation
+
+      const bufferLength = analyser.frequencyBinCount;
+      const dataArray = new Uint8Array(bufferLength);
+
+      // Update audio level for visualization with scrolling waveform
+      const updateAudioLevel = () => {
+        if (!isRecordingRef.current) return;
+
+        // Get data from analyzer
+        analyser.getByteTimeDomainData(dataArray);
+
+        // Calculate amplitude (deviation from 128)
+        let sum = 0;
+        for (let i = 0; i < bufferLength; i++) {
+          const v = (dataArray[i] - 128) / 128;
+          sum += v * v;
+        }
+        const rms = Math.sqrt(sum / bufferLength);
+        const normalizedLevel = Math.min(rms * 3, 1); // Scale and clamp to 0-1
+
+        setAudioLevel(normalizedLevel);
+
+        // Update waveform history with reduced frequency
+        frameCounterRef.current++;
+        if (frameCounterRef.current % 3 === 0) {
+          setWaveformHistory(prev => {
+            const newHistory = [...prev.slice(1), normalizedLevel];
+            return newHistory;
+          });
+        }
+
+        requestAnimationFrame(updateAudioLevel);
+      };
+
+      isRecordingRef.current = true;
+      frameCounterRef.current = 0;
+      updateAudioLevel();
+
+      // Create MediaRecorder with webm format
       const mediaRecorder = new MediaRecorder(stream, {
         mimeType: MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4',
       });
-
       mediaRecorderRef.current = mediaRecorder;
       audioChunksRef.current = [];
 
@@ -47,26 +137,27 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}) {
       };
 
       mediaRecorder.onstop = async () => {
-        // Create audio blob from chunks
-        const audioBlob = new Blob(audioChunksRef.current, {
-          type: mediaRecorder.mimeType || 'audio/webm'
-        });
+        console.log('[useVoiceInput] Recording stopped, processing...');
+        const mimeType = mediaRecorder.mimeType || 'audio/webm';
+        const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
 
-        // Stop all tracks to release microphone
-        if (streamRef.current) {
-          streamRef.current.getTracks().forEach(track => track.stop());
-          streamRef.current = null;
-        }
-
-        // Send to n8n for transcription
+        // Send to Supabase Edge Function for transcription
         if (audioBlob.size > 0) {
           setIsProcessing(true);
           try {
-            const userId = options.userId || 0;
-            const text = await transcribeVoice(audioBlob, userId);
+            const formData = new FormData();
+            formData.append('audio', audioBlob, 'recording.webm');
 
-            if (text && text.trim()) {
-              options.onTranscript?.(text.trim());
+            console.log('[useVoiceInput] Sending to speech-to-text function...');
+            const { data, error: apiError } = await supabase.functions.invoke('speech-to-text', {
+              body: formData
+            });
+
+            if (apiError) throw apiError;
+
+            if (data?.transcript) {
+              console.log('[useVoiceInput] Transcribed:', data.transcript);
+              options.onTranscript?.(data.transcript);
             } else {
               const errorMsg = 'No speech detected';
               setError(errorMsg);
@@ -74,29 +165,40 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}) {
             }
           } catch (err) {
             const errorMsg = err instanceof Error ? err.message : 'Failed to transcribe voice';
-            console.error('Voice transcription error:', err);
+            console.error('[useVoiceInput] Transcription error:', err);
             setError(errorMsg);
             options.onError?.(errorMsg);
           } finally {
             setIsProcessing(false);
           }
         }
+
+        cleanup();
       };
 
       mediaRecorder.onerror = (event) => {
-        console.error('MediaRecorder error:', event);
+        console.error('[useVoiceInput] MediaRecorder error:', event);
         const errorMsg = 'Recording error occurred';
         setError(errorMsg);
         options.onError?.(errorMsg);
-        setIsListening(false);
+        cleanup();
       };
 
       // Start recording
       mediaRecorder.start();
       setIsListening(true);
+      console.log('[useVoiceInput] Recording started...');
+
+      // Auto-stop after maxDuration
+      timeoutRef.current = setTimeout(() => {
+        if (mediaRecorderRef.current?.state === 'recording') {
+          console.log(`[useVoiceInput] Auto-stopping after ${maxDuration}ms`);
+          mediaRecorderRef.current.stop();
+        }
+      }, maxDuration);
 
     } catch (err) {
-      console.error('Error accessing microphone:', err);
+      console.error('[useVoiceInput] Microphone error:', err);
       let errorMsg = 'Could not access microphone';
 
       if (err instanceof Error) {
@@ -109,15 +211,15 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}) {
 
       setError(errorMsg);
       options.onError?.(errorMsg);
-      setIsListening(false);
+      cleanup();
     }
-  }, [options]);
+  }, [options, maxDuration, cleanup]);
 
   const stopListening = useCallback(() => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
       mediaRecorderRef.current.stop();
     }
-    setIsListening(false);
+    // Note: cleanup is called in onstop handler
   }, []);
 
   const toggleListening = useCallback(() => {
@@ -130,8 +232,10 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}) {
 
   return {
     isListening,
-    isProcessing, // New: true while transcribing
+    isProcessing, // true while transcribing
     error,
+    audioLevel, // Current audio level (0-1)
+    waveformHistory, // Array of 50 audio levels for waveform display
     startListening,
     stopListening,
     toggleListening,

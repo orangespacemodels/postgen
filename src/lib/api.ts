@@ -5,8 +5,8 @@ const N8N_BASE_URL = import.meta.env.VITE_N8N_WEBHOOK_URL || 'https://n8n.orange
 
 // Post-specific webhook for improving prompts with user marketing context
 const MAGIC_WAND_URL = `${N8N_BASE_URL}/post-magic-improve`;
-// Reuse carousel webhook for voice transcription
-const VOICE_URL = `${N8N_BASE_URL}/carousel-voice-05bfba68275e`;
+// Voice transcription now uses Supabase Edge Function directly (speech-to-text)
+// See useVoiceInput.ts hook
 
 // Webhooks for post generation
 const GENERATE_TEXT_URL = `${N8N_BASE_URL}/post-generate-text`;
@@ -295,23 +295,9 @@ export async function generateImage(request: GenerateImageRequest): Promise<{ im
   return { image_url: imageUrl };
 }
 
-export async function transcribeVoice(audioBlob: Blob, userId: number): Promise<string> {
-  const formData = new FormData();
-  formData.append('audio', audioBlob, 'voice.webm');
-  formData.append('user_id', String(userId));
-
-  const response = await fetch(VOICE_URL, {
-    method: 'POST',
-    body: formData,
-  });
-
-  if (!response.ok) {
-    throw new Error('Failed to transcribe voice');
-  }
-
-  const data = await response.json();
-  return data.text || '';
-}
+// Voice transcription is now handled directly in useVoiceInput.ts via Supabase Edge Function
+// The speech-to-text function uses OpenAI Whisper API for accurate transcription
+// This enables better mixed language support (Russian + English)
 
 // =====================================================
 // Content Analysis (reused from reelsgen)

@@ -74,6 +74,12 @@ export const translations = {
     en: 'Sent to Telegram',
   },
 
+  // Voice recording
+  recording: {
+    ru: 'Запись...',
+    en: 'Recording...',
+  },
+
   // Toast messages
   voiceTranscribed: {
     ru: 'Голос распознан',
