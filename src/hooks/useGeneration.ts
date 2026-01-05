@@ -45,8 +45,54 @@ export function useGeneration({ userId, tgChatId, postId }: UseGenerationOptions
       const language = modalParams?.language || detectLanguage(prompt);
       console.log(`[useGeneration] Using language: ${language} for prompt: "${prompt.substring(0, 50)}..."`);
 
+      // Build enhanced prompt with generation parameters
+      let enhancedPrompt = prompt;
+
+      if (modalParams) {
+        const isRu = language === 'ru';
+
+        // Text length instructions
+        const lengthMap = {
+          short: isRu ? '50-100 слов (кратко)' : '50-100 words (brief)',
+          medium: isRu ? '150-250 слов (средний объём)' : '150-250 words (medium length)',
+          long: isRu ? '300-500 слов (подробно)' : '300-500 words (detailed)',
+        };
+
+        // Emoji instructions
+        const emojiMap = {
+          none: isRu ? 'без эмодзи' : 'no emojis',
+          few: isRu ? '1-2 эмодзи' : '1-2 emojis',
+          moderate: isRu ? '3-5 эмодзи' : '3-5 emojis',
+          many: isRu ? '6+ эмодзи, активно использовать' : '6+ emojis, use actively',
+        };
+
+        // Formatting instructions
+        const formatMap = {
+          none: isRu ? 'без форматирования, простой текст' : 'no formatting, plain text',
+          simple: isRu ? 'простое форматирование (жирный **текст**, курсив *текст*) для Telegram' : 'simple formatting (bold **text**, italic *text*) for Telegram',
+          markdown: isRu ? 'полное Markdown-форматирование (заголовки, списки, цитаты)' : 'full Markdown formatting (headers, lists, quotes)',
+        };
+
+        const instructions = [
+          `${isRu ? 'Объём' : 'Length'}: ${lengthMap[modalParams.textLength]}`,
+          `${isRu ? 'Эмодзи' : 'Emojis'}: ${emojiMap[modalParams.emojiDensity]}`,
+          `${isRu ? 'Форматирование' : 'Formatting'}: ${formatMap[modalParams.formatting]}`,
+          `${isRu ? 'Язык' : 'Language'}: ${isRu ? 'русский' : 'English'}`,
+        ];
+
+        if (modalParams.callToAction) {
+          instructions.push(`${isRu ? 'Призыв к действию (CTA)' : 'Call to action (CTA)'}: ${modalParams.callToAction}`);
+        } else {
+          instructions.push(isRu ? 'Призыв к действию: сгенерируй подходящий CTA из контекста' : 'Call to action: generate appropriate CTA from context');
+        }
+
+        enhancedPrompt = `${prompt}\n\n---\n${isRu ? 'Параметры генерации' : 'Generation parameters'}:\n${instructions.map(i => `• ${i}`).join('\n')}`;
+
+        console.log('[useGeneration] Enhanced prompt with params:', enhancedPrompt.substring(0, 200));
+      }
+
       const result = await generateText({
-        prompt,
+        prompt: enhancedPrompt,
         user_id: userId,
         tg_chat_id: tgChatId,
         post_id: postId || undefined,
@@ -55,11 +101,6 @@ export function useGeneration({ userId, tgChatId, postId }: UseGenerationOptions
         format_description: options?.format_description,
         // Pass language for generation
         language,
-        // Pass modal parameters if provided
-        text_length: modalParams?.textLength,
-        emoji_density: modalParams?.emojiDensity,
-        formatting: modalParams?.formatting,
-        call_to_action: modalParams?.callToAction || undefined,
       });
       setGeneratedText(result.text);
     } catch (err) {

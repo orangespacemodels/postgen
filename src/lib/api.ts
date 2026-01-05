@@ -43,11 +43,8 @@ export interface GenerateTextRequest {
   format_description?: string;  // Format structure to follow
   // Language for generation (detected from prompt)
   language?: 'ru' | 'en';       // Generate content in this language
-  // Text generation modal parameters
-  text_length?: 'short' | 'medium' | 'long';     // Desired text length
-  emoji_density?: 'none' | 'few' | 'moderate' | 'many';  // Emoji usage
-  formatting?: 'none' | 'simple' | 'markdown';   // Output formatting style
-  call_to_action?: string;      // Custom CTA or empty for auto-generation
+  // Note: text_length, emoji_density, formatting, call_to_action
+  // are now embedded directly into the prompt text for better AI understanding
 }
 
 export interface GenerateImageRequest {
@@ -125,6 +122,14 @@ export async function improvePrompt(request: ImprovePromptRequest): Promise<stri
 }
 
 export async function generateText(request: GenerateTextRequest): Promise<{ text: string }> {
+  console.log('[generateText] Sending request with params:', {
+    text_length: request.text_length,
+    emoji_density: request.emoji_density,
+    formatting: request.formatting,
+    call_to_action: request.call_to_action,
+    language: request.language,
+  });
+
   const response = await fetch(GENERATE_TEXT_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
