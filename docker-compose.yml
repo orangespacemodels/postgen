@@ -10,8 +10,6 @@ services:
       - NODE_ENV=production
     depends_on:
       - backend
-    networks:
-      - app-network
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost/health"]
       interval: 30s
@@ -30,15 +28,9 @@ services:
       - SCRAPECREATORS_API_KEY=${SCRAPECREATORS_API_KEY}
       - SUPABASE_URL=${SUPABASE_URL}
       - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
-    networks:
-      - app-network
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 10s
-
-networks:
-  app-network:
-    driver: bridge
