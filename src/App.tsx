@@ -162,16 +162,20 @@ function App() {
         // Copy raw markdown
         await navigator.clipboard.writeText(generatedText);
       } else {
-        // Copy as formatted plain text (convert markdown to plain with formatting preserved)
-        // Remove markdown syntax but keep structure
-        const plainText = generatedText
-          .replace(/\*\*(.+?)\*\*/g, '$1')  // Remove bold markers
-          .replace(/\*(.+?)\*/g, '$1')       // Remove italic markers
-          .replace(/__(.+?)__/g, '$1')       // Remove bold markers
-          .replace(/_(.+?)_/g, '$1')         // Remove italic markers
-          .replace(/~~(.+?)~~/g, '$1')       // Remove strikethrough
-          .replace(/`(.+?)`/g, '$1');        // Remove code markers
-        await navigator.clipboard.writeText(plainText);
+        // Copy as HTML (for Word, Google Docs, etc.)
+        const html = formatMarkdown(generatedText);
+
+        // Create blob with HTML content
+        const htmlBlob = new Blob([html], { type: 'text/html' });
+        const textBlob = new Blob([generatedText], { type: 'text/plain' });
+
+        // Use ClipboardItem to copy both HTML and plain text
+        const clipboardItem = new ClipboardItem({
+          'text/html': htmlBlob,
+          'text/plain': textBlob,
+        });
+
+        await navigator.clipboard.write([clipboardItem]);
       }
 
       setCopiedFormat(format);
@@ -180,7 +184,15 @@ function App() {
       // Reset copied state after 2 seconds
       setTimeout(() => setCopiedFormat(null), 2000);
     } catch {
-      toast.error(lang === 'ru' ? 'Не удалось скопировать' : 'Failed to copy');
+      // Fallback for browsers that don't support ClipboardItem
+      try {
+        await navigator.clipboard.writeText(generatedText);
+        setCopiedFormat(format);
+        toast.success(lang === 'ru' ? 'Скопировано!' : 'Copied!');
+        setTimeout(() => setCopiedFormat(null), 2000);
+      } catch {
+        toast.error(lang === 'ru' ? 'Не удалось скопировать' : 'Failed to copy');
+      }
     }
   };
 
