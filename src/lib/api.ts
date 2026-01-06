@@ -206,14 +206,17 @@ export async function generateText(request: GenerateTextRequest): Promise<{ text
 // Prepare image generation - generates scene_description and captions via AI
 // Uses the same workflow with prepare_only=true flag
 export async function prepareImage(request: PrepareImageRequest): Promise<PrepareImageResponse> {
-  // user_id should be passed explicitly from useUser() hook
-  // Telegram WebApp API is only a fallback
-  const telegramUserId = getUserIdFromTelegramWebApp();
-  const effectiveUserId = (request.user_id && request.user_id > 0) ? request.user_id : telegramUserId;
+  // user_id MUST be passed explicitly from useUser() hook (internal database ID)
+  // IMPORTANT: Never use Telegram WebApp user ID - it's different from internal database ID!
 
-  if (!effectiveUserId || effectiveUserId <= 0) {
+  console.log('[prepareImage] Request user_id:', request.user_id);
+
+  if (!request.user_id || request.user_id <= 0) {
+    console.error('[prepareImage] No valid internal user_id provided! user_id:', request.user_id);
     throw new Error('User not authenticated. Please reload the app.');
   }
+
+  const effectiveUserId = request.user_id;
 
   // Check balance and charge for preparation
   const spendResult = await spendTokens(
@@ -267,21 +270,20 @@ export async function prepareImage(request: PrepareImageRequest): Promise<Prepar
 const IMAGE_GENERATION_PRICE = 0.10; // $0.10 per image
 
 export async function generateImage(request: GenerateImageRequest): Promise<{ image_url: string }> {
-  // user_id should be passed explicitly from useUser() hook
-  // Telegram WebApp API is only a fallback
-  const telegramUserId = getUserIdFromTelegramWebApp();
+  // user_id MUST be passed explicitly from useUser() hook (internal database ID)
+  // IMPORTANT: Never use Telegram WebApp user ID - it's different from internal database ID!
+  // Telegram user ID (e.g., 277404298) != Internal DB ID (e.g., 93)
 
-  console.log('[generateImage] Request user_id:', request.user_id, 'telegramUserId:', telegramUserId);
+  console.log('[generateImage] Request user_id:', request.user_id, 'tg_chat_id:', request.tg_chat_id);
 
-  // Use telegramUserId as fallback if request.user_id is invalid
-  const effectiveUserId = (request.user_id && request.user_id > 0) ? request.user_id : telegramUserId;
-
-  if (!effectiveUserId || effectiveUserId <= 0) {
-    console.error('[generateImage] No valid user_id found!');
+  // Validate that internal database user_id is provided
+  if (!request.user_id || request.user_id <= 0) {
+    console.error('[generateImage] No valid internal user_id provided! user_id:', request.user_id);
     throw new Error('User not authenticated. Please reload the app.');
   }
 
-  console.log('[generateImage] Using effectiveUserId:', effectiveUserId);
+  const effectiveUserId = request.user_id;
+  console.log('[generateImage] Using internal database userId:', effectiveUserId);
 
   // Check balance and charge for image generation
   const spendResult = await spendTokens(
