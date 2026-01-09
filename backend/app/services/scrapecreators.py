@@ -110,27 +110,56 @@ class ScrapeCreatorsClient:
 
     async def analyze_instagram(self, url: str) -> dict:
         """Analyze Instagram post/reel using ScrapeCreators API."""
-        data = await self._make_request("/instagram/post", {"url": url})
+        raw_data = await self._make_request("/instagram/post", {"url": url})
+
+        # ScrapeCreators returns nested structure: data.xdt_shortcode_media
+        # or sometimes flat structure for legacy compatibility
+        data = raw_data.get("xdt_shortcode_media") or raw_data.get("data", {}).get("xdt_shortcode_media") or raw_data
 
         content_type = self.detect_instagram_type(url)
         is_video = content_type == "reel" or data.get("is_video", False)
+
+        # Extract caption from nested structure
+        caption = ""
+        caption_edges = data.get("edge_media_to_caption", {}).get("edges", [])
+        if caption_edges:
+            caption = caption_edges[0].get("node", {}).get("text", "")
+        # Fallback to flat structure
+        if not caption:
+            caption = data.get("caption", "")
+
+        # Extract display URL
+        display_url = data.get("display_url") or data.get("thumbnail_src") or data.get("thumbnail_url")
+
+        # Extract video URL
+        video_url = data.get("video_url") if is_video else None
+
+        # Extract video duration (in seconds, convert to minutes)
+        video_duration = data.get("video_duration", 0)
+        video_duration_minutes = video_duration / 60 if video_duration else None
+
+        # Extract owner/author
+        owner = data.get("owner", {})
+        author = owner.get("username", "")
+
+        # Extract engagement metrics
+        likes = data.get("edge_media_preview_like", {}).get("count", 0) or data.get("like_count", 0)
+        comments = data.get("edge_media_to_parent_comment", {}).get("count", 0) or data.get("comment_count", 0)
 
         return {
             "success": True,
             "platform": "instagram",
             "content_type": "video" if is_video else "post",
-            "has_image": bool(data.get("display_url") or data.get("thumbnail_url")),
+            "has_image": bool(display_url),
             "has_video": is_video,
-            "post_text": data.get("caption", ""),
-            "narrative": data.get("caption", ""),
-            "image_url": data.get("display_url") or data.get("thumbnail_url"),
-            "video_url": data.get("video_url") if is_video else None,
-            "video_duration_minutes": (
-                data.get("video_duration", 0) / 60 if data.get("video_duration") else None
-            ),
-            "likes": data.get("like_count", 0),
-            "comments": data.get("comment_count", 0),
-            "author": data.get("owner", {}).get("username"),
+            "post_text": caption,
+            "narrative": caption,
+            "image_url": display_url,
+            "video_url": video_url,
+            "video_duration_minutes": video_duration_minutes,
+            "likes": likes,
+            "comments": comments,
+            "author": author,
             "source_url": url,
         }
 
