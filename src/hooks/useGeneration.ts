@@ -156,7 +156,13 @@ export function useGeneration({ userId, tgChatId, postId }: UseGenerationOptions
       // Add modal parameters if provided
       if (modalParams) {
         requestParams.scene_description = modalParams.sceneDescription;
-        requestParams.captions = modalParams.captions || undefined;
+        // If captions is empty, explicitly instruct to not add any text to the image
+        if (modalParams.captions && modalParams.captions.trim()) {
+          requestParams.captions = modalParams.captions;
+        } else {
+          // Explicit instruction to avoid any text on the image
+          requestParams.captions = 'DO NOT add any text, lettering, inscriptions, words, labels, or captions to the image. The image must be purely visual with no text of any kind.';
+        }
         requestParams.aspect_ratio = modalParams.aspectRatio;
         requestParams.style_id = modalParams.styleId;
 
