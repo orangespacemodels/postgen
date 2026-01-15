@@ -109,7 +109,7 @@ class ScrapeCreatorsClient:
             return response.json()
 
     async def analyze_instagram(self, url: str) -> dict:
-        """Analyze Instagram post/reel using ScrapeCreators API."""
+        """Analyze Instagram post/reel/carousel using ScrapeCreators API."""
         raw_data = await self._make_request("/instagram/post", {"url": url})
 
         # ScrapeCreators returns nested structure: data.xdt_shortcode_media
@@ -118,6 +118,27 @@ class ScrapeCreatorsClient:
 
         content_type = self.detect_instagram_type(url)
         is_video = content_type == "reel" or data.get("is_video", False)
+
+        # Detect carousel: XDTGraphSidecar type or presence of edge_sidecar_to_children
+        typename = data.get("__typename", "")
+        sidecar_children = data.get("edge_sidecar_to_children", {}).get("edges", [])
+        is_carousel = typename == "XDTGraphSidecar" or len(sidecar_children) > 0
+
+        # Extract carousel items if present
+        carousel_items = []
+        if is_carousel and sidecar_children:
+            for edge in sidecar_children:
+                node = edge.get("node", {})
+                node_typename = node.get("__typename", "")
+                node_is_video = node.get("is_video", False) or node_typename == "XDTGraphVideo"
+
+                item = {
+                    "type": "video" if node_is_video else "image",
+                    "display_url": node.get("display_url", ""),
+                    "video_url": node.get("video_url") if node_is_video else None,
+                    "accessibility_caption": node.get("accessibility_caption"),
+                }
+                carousel_items.append(item)
 
         # Extract caption from nested structure
         caption = ""
@@ -128,11 +149,11 @@ class ScrapeCreatorsClient:
         if not caption:
             caption = data.get("caption", "")
 
-        # Extract display URL
+        # Extract display URL (cover image for carousel)
         display_url = data.get("display_url") or data.get("thumbnail_src") or data.get("thumbnail_url")
 
-        # Extract video URL
-        video_url = data.get("video_url") if is_video else None
+        # Extract video URL (for single videos, not carousels)
+        video_url = data.get("video_url") if is_video and not is_carousel else None
 
         # Extract video duration (in seconds, convert to minutes)
         video_duration = data.get("video_duration", 0)
@@ -146,17 +167,28 @@ class ScrapeCreatorsClient:
         likes = data.get("edge_media_preview_like", {}).get("count", 0) or data.get("like_count", 0)
         comments = data.get("edge_media_to_parent_comment", {}).get("count", 0) or data.get("comment_count", 0)
 
+        # Determine content type for response
+        if is_carousel:
+            response_content_type = "carousel"
+            # Check if carousel has any videos
+            has_video_in_carousel = any(item["type"] == "video" for item in carousel_items)
+            is_video = has_video_in_carousel
+        else:
+            response_content_type = "video" if is_video else "post"
+
         return {
             "success": True,
             "platform": "instagram",
-            "content_type": "video" if is_video else "post",
-            "has_image": bool(display_url),
+            "content_type": response_content_type,
+            "has_image": bool(display_url) or any(item["type"] == "image" for item in carousel_items),
             "has_video": is_video,
             "post_text": caption,
             "narrative": caption,
             "image_url": display_url,
             "video_url": video_url,
             "video_duration_minutes": video_duration_minutes,
+            "is_carousel": is_carousel,
+            "carousel_items": carousel_items if carousel_items else None,
             "likes": likes,
             "comments": comments,
             "author": author,
