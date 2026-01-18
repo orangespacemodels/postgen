@@ -30,6 +30,10 @@ class AnalysisResponse(BaseModel):
     platform: str | None = None       # Platform ID: instagram, tiktok, youtube, etc.
     platform_name: str | None = None  # Display name: Instagram, TikTok, YouTube, etc.
 
+    # YouTube transcript (extracted from video captions/subtitles)
+    transcript: str | None = None          # Full transcript text (max 10000 chars)
+    transcript_language: str | None = None  # Language code: 'ru', 'en', 'ru (auto)', etc.
+
     # AI-generated descriptions
     narrative: str | None = None
     format_description: str | None = None

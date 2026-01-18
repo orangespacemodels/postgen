@@ -142,10 +142,11 @@ function App() {
     // Close modal and start generation with modal parameters
     setShowTextModal(false);
 
-    // Pass narrative/format context if available from content analysis
+    // Pass narrative/format/transcript context if available from content analysis
     handleGenerateText(prompt, {
       narrative: analysisContext?.narrative,
       format_description: analysisContext?.format_description,
+      transcript: analysisContext?.transcript,
     }, params);
   };
 

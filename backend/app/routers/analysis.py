@@ -59,6 +59,9 @@ async def api_analyze_url(request: AnalyzeUrlRequest) -> AnalysisResponse:
             comments=data.get("comments"),
             shares=data.get("shares"),
             author=data.get("author"),
+            # YouTube transcript (if available)
+            transcript=data.get("transcript"),
+            transcript_language=data.get("transcript_language"),
         )
 
     except HTTPException:

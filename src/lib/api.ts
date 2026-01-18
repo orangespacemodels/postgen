@@ -41,6 +41,7 @@ export interface GenerateTextRequest {
   // Context from content analysis (for rewriting posts)
   narrative?: string;           // Original post narrative to rewrite
   format_description?: string;  // Format structure to follow
+  transcript?: string;          // YouTube transcript for richer context
   // Language for generation (detected from prompt)
   language?: 'ru' | 'en';       // Generate content in this language
   // Note: text_length, emoji_density, formatting, call_to_action
@@ -403,6 +404,9 @@ export interface AnalysisResult {
     hashtags?: string[];
     media_urls?: string[];
   };
+  // YouTube transcript (extracted from video captions/subtitles)
+  transcript?: string;             // Full transcript text (max 10000 chars)
+  transcript_language?: string;    // Language code: 'ru', 'en', 'ru (auto)', etc.
   // AI-generated descriptions (will be populated by backend)
   narrative?: string;
   format_description?: string;
@@ -544,6 +548,9 @@ export async function analyzeContentUrl(
     style_description: data.style_description,
     composition_description: data.composition_description,
     scene_description: data.scene_description,
+    // YouTube transcript (if available)
+    transcript: data.transcript,
+    transcript_language: data.transcript_language,
   };
 }
 

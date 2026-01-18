@@ -73,6 +73,10 @@ export interface ContentAnalysisContext {
   reference_image_url?: string;    // Image URL from analyzed content
   reference_video_url?: string;    // Video URL (for thumbnail extraction)
   use_reference_image?: boolean;   // User opted to use reference for style transfer
+
+  // YouTube transcript (if available)
+  transcript?: string;             // Full transcript text from video subtitles
+  transcript_language?: string;    // Language code: 'ru', 'en', 'ru (auto)', etc.
 }
 
 // Pricing constants (in USD)

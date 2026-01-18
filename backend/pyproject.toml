@@ -10,6 +10,8 @@ dependencies = [
     "pydantic-settings>=2.6.0",
     "httpx>=0.28.0",
     "python-multipart>=0.0.9",  # Required for file uploads
+    "youtube-transcript-api>=0.6.2",  # Free YouTube transcript extraction
+    "google-api-python-client>=2.0.0",  # YouTube Data API v3 for metadata
 ]
 
 [project.optional-dependencies]

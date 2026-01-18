@@ -29,6 +29,7 @@ export function useGeneration({ userId, tgChatId, postId }: UseGenerationOptions
     options?: {
       narrative?: string;
       format_description?: string;
+      transcript?: string;  // YouTube transcript for richer context
     },
     modalParams?: TextGenerationParams
   ) => {
@@ -99,6 +100,8 @@ export function useGeneration({ userId, tgChatId, postId }: UseGenerationOptions
         // Pass narrative context for rewriting posts
         narrative: options?.narrative,
         format_description: options?.format_description,
+        // Pass YouTube transcript for richer context
+        transcript: options?.transcript,
         // Pass language for generation
         language,
       });

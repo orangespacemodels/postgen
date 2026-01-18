@@ -221,37 +221,117 @@ class ScrapeCreatorsClient:
         }
 
     async def analyze_youtube(self, url: str) -> dict:
-        """Analyze YouTube video/short using ScrapeCreators API."""
-        # ScrapeCreators YouTube API uses 'url' parameter
-        data = await self._make_request("/youtube/video", {"url": url})
+        """Analyze YouTube video/short with FREE methods first, PAID fallback.
 
-        # Duration is usually in ISO 8601 format (PT1H2M3S) or seconds
-        duration_seconds = data.get("duration", 0)
-        if isinstance(duration_seconds, str):
-            # Parse ISO 8601 duration if needed
-            duration_seconds = 0  # Simplified, actual parsing would be more complex
-        duration_minutes = duration_seconds / 60 if duration_seconds else None
+        Strategy:
+        1. Try FREE YouTube Data API v3 for metadata (if YOUTUBE_API_KEY is set)
+        2. Try FREE youtube-transcript-api for transcript (no key needed)
+        3. Fallback to PAID ScrapeCreators API if both fail
+
+        This significantly reduces API costs while maintaining full functionality.
+        """
+        from .youtube_transcript import get_youtube_transcript
+        from .youtube_api import get_youtube_metadata
 
         is_short = self.detect_youtube_type(url) == "short"
+        metadata_source = "unknown"
+
+        # Step 1: Try FREE YouTube Data API for metadata
+        metadata = await get_youtube_metadata(url)
+
+        if metadata:
+            # FREE metadata extraction succeeded
+            metadata_source = "youtube_api"
+            print(f"[analyze_youtube] Using FREE YouTube Data API for metadata")
+
+            title = metadata.title
+            description = metadata.description
+            thumbnail = metadata.thumbnail_url
+            duration_seconds = metadata.duration_seconds
+            views = metadata.views
+            likes = metadata.likes
+            comments = metadata.comments
+            author = metadata.channel_name
+        else:
+            # Fallback to PAID ScrapeCreators API for metadata
+            metadata_source = "scrapecreators"
+            print(f"[analyze_youtube] Falling back to PAID ScrapeCreators for metadata")
+
+            try:
+                data = await self._make_request("/youtube/video", {"url": url})
+            except Exception as e:
+                print(f"[analyze_youtube] ScrapeCreators failed: {e}")
+                # Return minimal response on complete failure
+                return {
+                    "success": False,
+                    "platform": "youtube",
+                    "content_type": "video",
+                    "error": str(e),
+                    "source_url": url,
+                }
+
+            title = data.get("title", "")
+            description = data.get("description", "")
+            thumbnail = data.get("thumbnail", "")
+            author = data.get("channelTitle") or data.get("channel", {}).get("name", "")
+            views = data.get("views", 0)
+            likes = data.get("likes", 0)
+            comments = data.get("comments", 0)
+
+            # Duration from ScrapeCreators (may be seconds or ISO 8601)
+            duration_raw = data.get("duration", 0)
+            if isinstance(duration_raw, str):
+                # Parse ISO 8601 if needed
+                from .youtube_api import parse_iso8601_duration
+                duration_seconds = parse_iso8601_duration(duration_raw)
+            else:
+                duration_seconds = duration_raw or 0
+
+        duration_minutes = duration_seconds / 60 if duration_seconds else None
+
+        # Step 2: Try FREE transcript extraction (youtube-transcript-api)
+        # This is always free, no API key needed
+        transcript = None
+        transcript_language = None
+        try:
+            transcript, transcript_language = await get_youtube_transcript(url)
+            if transcript:
+                print(f"[analyze_youtube] Got transcript ({transcript_language}): {len(transcript)} chars")
+        except Exception as e:
+            print(f"[analyze_youtube] Transcript extraction failed (non-critical): {e}")
+
+        # Build narrative: combine description with transcript for richer context
+        narrative = description
+        if transcript:
+            # If we have a transcript, use it as the primary narrative
+            # (it contains the actual video content, not just description)
+            narrative = transcript
+
+        print(f"[analyze_youtube] Completed: metadata={metadata_source}, transcript={'yes' if transcript else 'no'}")
 
         return {
             "success": True,
             "platform": "youtube",
             "content_type": "video",
-            "has_image": bool(data.get("thumbnail")),
+            "has_image": bool(thumbnail),
             "has_video": True,
-            "post_text": data.get("description", ""),
-            "narrative": data.get("description", ""),
-            "title": data.get("title", ""),
-            "image_url": data.get("thumbnail"),
+            "post_text": description,
+            "narrative": narrative,
+            "title": title,
+            "image_url": thumbnail,
             "video_url": url,  # YouTube doesn't provide direct video URL
             "video_duration_minutes": duration_minutes,
-            "likes": data.get("likes", 0),
-            "comments": data.get("comments", 0),
-            "views": data.get("views", 0),
-            "author": data.get("channelTitle") or data.get("channel", {}).get("name"),
+            "likes": likes,
+            "comments": comments,
+            "views": views,
+            "author": author,
             "source_url": url,
             "is_short": is_short,
+            # Transcript fields
+            "transcript": transcript,
+            "transcript_language": transcript_language,
+            # Debug info (useful for monitoring)
+            "_metadata_source": metadata_source,
         }
 
     async def analyze_twitter(self, url: str) -> dict:

@@ -146,6 +146,10 @@ export function useContentAnalysis({ userId, tgChatId, postId }: UseContentAnaly
       reference_image_url: analysisResult.image_url,
       reference_video_url: analysisResult.video_url,
       use_reference_image: needsReferenceImage && !!analysisResult.image_url,
+
+      // Include YouTube transcript if available (always pass when use_narrative is selected)
+      transcript: selectedOptions.includes('use_narrative') ? analysisResult.transcript : undefined,
+      transcript_language: selectedOptions.includes('use_narrative') ? analysisResult.transcript_language : undefined,
     };
 
     setAnalysisContext(context);

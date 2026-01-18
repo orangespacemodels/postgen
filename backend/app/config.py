@@ -8,6 +8,10 @@ class Settings(BaseSettings):
     # ScrapeCreators API
     scrapecreators_api_key: str = ""
 
+    # YouTube Data API v3 (optional, for free metadata extraction)
+    # Without this key, falls back to ScrapeCreators (paid)
+    youtube_api_key: str | None = None
+
     # OpenAI API (for Whisper speech-to-text)
     openai_api_key: str = ""
 
