@@ -38,10 +38,17 @@ const OPTIONS: OptionConfig[] = [
     id: 'use_narrative',
     labelRu: 'Использовать нарратив',
     labelEn: 'Use narrative',
-    descriptionRu: 'Текст и посыл оригинального поста',
-    descriptionEn: 'Text and message from the original post',
-    availableFor: { post: true, image: false, video: false },
-    getContent: (result) => result.post_text || result.narrative || null,
+    descriptionRu: 'Текст и посыл оригинального контента',
+    descriptionEn: 'Text and message from the original content',
+    availableFor: { post: true, image: false, video: true },
+    getContent: (result) => {
+      // For videos, prefer transcript (what's spoken)
+      if (result.transcript) {
+        return result.transcript;
+      }
+      // Fallback to post text or narrative
+      return result.post_text || result.narrative || null;
+    },
   },
   {
     id: 'use_format',
@@ -74,12 +81,23 @@ const OPTIONS: OptionConfig[] = [
   },
   {
     id: 'use_style',
-    labelRu: 'Использовать стиль изображения',
-    labelEn: 'Use image style',
-    descriptionRu: 'Визуальный стиль: цвета, освещение, настроение',
-    descriptionEn: 'Visual style: colors, lighting, mood',
-    availableFor: { post: false, image: true, video: false },
-    showsImage: true,
+    labelRu: 'Использовать стиль',
+    labelEn: 'Use style',
+    descriptionRu: 'Визуальный стиль контента',
+    descriptionEn: 'Visual style of the content',
+    availableFor: { post: false, image: true, video: true },
+    showsImage: false,
+    getContent: (result, isRussian) => {
+      // For videos, use style_description from frame analysis
+      if (result.style_description) {
+        return result.style_description;
+      }
+      // For images, show placeholder (actual style is from image itself)
+      if (result.image_url) {
+        return isRussian ? 'Стиль из референсного изображения' : 'Style from reference image';
+      }
+      return null;
+    },
   },
   {
     id: 'use_composition',
@@ -94,14 +112,19 @@ const OPTIONS: OptionConfig[] = [
     id: 'use_scene',
     labelRu: 'Использовать описание сцены',
     labelEn: 'Use scene description',
-    descriptionRu: 'Описание того, что происходит на изображении/видео',
-    descriptionEn: 'Description of what\'s happening in the image/video',
+    descriptionRu: 'Описание того, что происходит визуально',
+    descriptionEn: 'Description of what\'s happening visually',
     availableFor: { post: false, image: true, video: true },
     getContent: (result) => {
-      // Use transcription or narrative as scene description
+      // For videos, prefer scene_description from frame analysis
+      if (result.scene_description) {
+        return result.scene_description;
+      }
+      // Fallback to transcription description
       if (result.transcription?.description) {
         return result.transcription.description;
       }
+      // For images without scene_description, use narrative
       if (result.narrative) {
         return result.narrative;
       }
