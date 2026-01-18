@@ -6,3 +6,4 @@ class AnalyzeUrlRequest(BaseModel):
     url: str
     user_id: int
     post_id: int | None = None
+    language: str = "ru"  # Language for AI-generated descriptions ('ru' or 'en')

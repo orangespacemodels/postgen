@@ -220,18 +220,20 @@ class ScrapeCreatorsClient:
             "source_url": url,
         }
 
-    async def analyze_youtube(self, url: str) -> dict:
+    async def analyze_youtube(self, url: str, language: str = "ru") -> dict:
         """Analyze YouTube video/short with FREE methods first, PAID fallback.
 
         Strategy:
         1. Try FREE YouTube Data API v3 for metadata (if YOUTUBE_API_KEY is set)
         2. Try FREE youtube-transcript-api for transcript (no key needed)
-        3. Fallback to PAID ScrapeCreators API if both fail
+        3. Try FREE thumbnail-based frame analysis with Vision AI
+        4. Fallback to PAID ScrapeCreators API if metadata extraction fails
 
         This significantly reduces API costs while maintaining full functionality.
         """
         from .youtube_transcript import get_youtube_transcript
         from .youtube_api import get_youtube_metadata
+        from .youtube_frames import analyze_youtube_frames
 
         is_short = self.detect_youtube_type(url) == "short"
         metadata_source = "unknown"
@@ -307,7 +309,21 @@ class ScrapeCreatorsClient:
             # (it contains the actual video content, not just description)
             narrative = transcript
 
-        print(f"[analyze_youtube] Completed: metadata={metadata_source}, transcript={'yes' if transcript else 'no'}")
+        # Step 3: Try frame analysis for scene and style detection
+        scene_description = None
+        style_description = None
+        video_id = self.extract_youtube_video_id(url)
+        if video_id:
+            try:
+                frame_analysis = await analyze_youtube_frames(video_id, language=language)
+                scene_description = frame_analysis.get("scene_description")
+                style_description = frame_analysis.get("style_description")
+                frames_analyzed = frame_analysis.get("frames_analyzed", 0)
+                print(f"[analyze_youtube] Frame analysis: {frames_analyzed} frames, scene={'yes' if scene_description else 'no'}, style={'yes' if style_description else 'no'}")
+            except Exception as e:
+                print(f"[analyze_youtube] Frame analysis failed (non-critical): {e}")
+
+        print(f"[analyze_youtube] Completed: metadata={metadata_source}, transcript={'yes' if transcript else 'no'}, frames={'yes' if scene_description else 'no'}")
 
         return {
             "success": True,
@@ -330,6 +346,9 @@ class ScrapeCreatorsClient:
             # Transcript fields
             "transcript": transcript,
             "transcript_language": transcript_language,
+            # Frame analysis fields (Vision AI)
+            "scene_description": scene_description,
+            "style_description": style_description,
             # Debug info (useful for monitoring)
             "_metadata_source": metadata_source,
         }
@@ -505,7 +524,7 @@ PLATFORM_NAMES = {
 SUPPORTED_PLATFORMS = list(PLATFORM_NAMES.keys())
 
 
-async def analyze_url(url: str) -> dict:
+async def analyze_url(url: str, language: str = "ru") -> dict:
     """Analyze social media URL and return content data.
 
     Supported platforms:
@@ -520,6 +539,7 @@ async def analyze_url(url: str) -> dict:
 
     Args:
         url: Social media URL
+        language: Language for AI-generated descriptions ('ru' or 'en')
 
     Returns:
         dict with content data including image_url, video_url, platform, etc.
@@ -538,10 +558,15 @@ async def analyze_url(url: str) -> dict:
         )
 
     # Route to appropriate analyzer
+    # Note: YouTube uses language for frame analysis
+    if platform == "youtube":
+        result = await client.analyze_youtube(url, language=language)
+        result["platform_name"] = PLATFORM_NAMES.get(platform, platform)
+        return result
+
     analyzers = {
         "instagram": client.analyze_instagram,
         "tiktok": client.analyze_tiktok,
-        "youtube": client.analyze_youtube,
         "twitter": client.analyze_twitter,
         "linkedin": client.analyze_linkedin,
         "reddit": client.analyze_reddit,

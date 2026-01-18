@@ -40,7 +40,7 @@ async def api_analyze_url(request: AnalyzeUrlRequest) -> AnalysisResponse:
             )
 
         # Analyze URL using ScrapeCreators
-        data = await analyze_url(request.url)
+        data = await analyze_url(request.url, language=request.language)
 
         return AnalysisResponse(
             success=True,
@@ -62,6 +62,9 @@ async def api_analyze_url(request: AnalyzeUrlRequest) -> AnalysisResponse:
             # YouTube transcript (if available)
             transcript=data.get("transcript"),
             transcript_language=data.get("transcript_language"),
+            # YouTube frame analysis (if available)
+            scene_description=data.get("scene_description"),
+            style_description=data.get("style_description"),
         )
 
     except HTTPException:
