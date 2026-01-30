@@ -25,11 +25,14 @@ async def speech_to_text(audio: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail="Empty audio file")
 
     # Prepare multipart form data for Whisper API
+    # Note: 'model' and 'prompt' go as data, not files
     files = {
         "file": (audio.filename or "recording.webm", audio_content, audio.content_type or "audio/webm"),
-        "model": (None, "whisper-1"),
+    }
+    data = {
+        "model": "whisper-1",
         # Prompt helps with mixed Russian-English speech recognition
-        "prompt": (None, "This is a mixed Russian and English speech. Привет, Hello, как дела, how are you."),
+        "prompt": "This is a mixed Russian and English speech. Привет, Hello, как дела, how are you.",
     }
 
     try:
@@ -38,6 +41,7 @@ async def speech_to_text(audio: UploadFile = File(...)):
                 "https://api.openai.com/v1/audio/transcriptions",
                 headers={"Authorization": f"Bearer {settings.openai_api_key}"},
                 files=files,
+                data=data,
             )
 
         if response.status_code != 200:
