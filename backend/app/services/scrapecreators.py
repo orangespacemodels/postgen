@@ -16,6 +16,7 @@ from typing import Literal, Optional
 from app.config import get_settings
 
 SCRAPECREATORS_BASE = "https://api.scrapecreators.com/v1"
+SCRAPECREATORS_BASE_V2 = "https://api.scrapecreators.com/v2"
 
 Platform = Literal[
     "instagram", "tiktok", "youtube", "twitter",
@@ -97,19 +98,146 @@ class ScrapeCreatorsClient:
                 return match.group(1)
         return None
 
-    async def _make_request(self, endpoint: str, params: dict) -> dict:
-        """Make request to ScrapeCreators API."""
-        async with httpx.AsyncClient(timeout=30.0) as client:
+    async def _make_request(self, endpoint: str, params: dict, base_url: str = None, timeout: float = 30.0) -> dict:
+        """Make request to ScrapeCreators API.
+
+        Args:
+            endpoint: API endpoint path
+            params: Query parameters
+            base_url: Base URL (defaults to SCRAPECREATORS_BASE v1)
+            timeout: Request timeout in seconds (default 30s, use higher for transcript APIs)
+        """
+        base = base_url or SCRAPECREATORS_BASE
+        async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.get(
-                f"{SCRAPECREATORS_BASE}{endpoint}",
+                f"{base}{endpoint}",
                 params=params,
                 headers=self.headers,
             )
             response.raise_for_status()
             return response.json()
 
+    async def get_instagram_transcript(self, url: str) -> tuple[str | None, str | None]:
+        """Get transcript for Instagram Reel/video using ScrapeCreators API v2.
+
+        The API uses AI to transcribe audio from Instagram videos.
+        Takes 10-30 seconds for processing.
+
+        Args:
+            url: Instagram post/reel URL
+
+        Returns:
+            Tuple of (transcript_text, language) or (None, None) if unavailable
+        """
+        try:
+            # Use API v2 for Instagram transcripts with longer timeout (AI processing takes 10-30s)
+            data = await self._make_request(
+                "/instagram/media/transcript",
+                {"url": url},
+                base_url=SCRAPECREATORS_BASE_V2,
+                timeout=60.0  # Longer timeout for AI transcription
+            )
+
+            # Response format: { "success": true, "transcripts": [{ "id": "...", "shortcode": "...", "text": "..." }] }
+            transcripts = data.get("transcripts", [])
+            if not transcripts:
+                print(f"[instagram_transcript] No transcript available for: {url}")
+                return None, None
+
+            # Combine all transcript texts (for carousels)
+            all_texts = [t.get("text", "") for t in transcripts if t.get("text")]
+            if not all_texts:
+                print(f"[instagram_transcript] Empty transcript for: {url}")
+                return None, None
+
+            transcript_text = "\n\n".join(all_texts)
+
+            # Truncate if too long
+            max_length = 15000
+            if len(transcript_text) > max_length:
+                transcript_text = transcript_text[:max_length].rsplit(' ', 1)[0]
+                transcript_text += '... [transcript truncated]'
+
+            print(f"[instagram_transcript] Got transcript: {len(transcript_text)} chars")
+            # Language detection not provided by API, mark as auto-detected
+            return transcript_text, "auto"
+
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                print(f"[instagram_transcript] No transcript available: {url}")
+            else:
+                print(f"[instagram_transcript] API error {e.response.status_code}: {e}")
+            return None, None
+        except Exception as e:
+            print(f"[instagram_transcript] Error: {e}")
+            return None, None
+
+    async def get_tiktok_transcript(self, url: str, language: str = "ru") -> tuple[str | None, str | None]:
+        """Get transcript for TikTok video using ScrapeCreators API.
+
+        Args:
+            url: TikTok video URL
+            language: Preferred language for transcript (2-letter code)
+
+        Returns:
+            Tuple of (transcript_text, language) or (None, None) if unavailable
+        """
+        try:
+            # TikTok transcript endpoint with language preference and AI fallback
+            data = await self._make_request(
+                "/tiktok/video/transcript",
+                {
+                    "url": url,
+                    "language": language,
+                    "use_ai_as_fallback": "true"  # Use AI if native transcript not available (costs 10 credits)
+                },
+                timeout=60.0  # Longer timeout for AI transcription
+            )
+
+            # Extract transcript text
+            transcript_text = data.get("transcript_only_text", "")
+
+            if not transcript_text:
+                # Fallback: try to build from transcript segments array
+                segments = data.get("transcript", [])
+                if segments:
+                    transcript_text = " ".join(
+                        seg.get("text", "").strip()
+                        for seg in segments
+                        if seg.get("text")
+                    )
+
+            if not transcript_text:
+                print(f"[tiktok_transcript] No transcript available for: {url}")
+                return None, None
+
+            # Get detected language
+            detected_language = data.get("language", language)
+
+            # Truncate if too long
+            max_length = 15000
+            if len(transcript_text) > max_length:
+                transcript_text = transcript_text[:max_length].rsplit(' ', 1)[0]
+                transcript_text += '... [transcript truncated]'
+
+            print(f"[tiktok_transcript] Got transcript ({detected_language}): {len(transcript_text)} chars")
+            return transcript_text, detected_language
+
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                print(f"[tiktok_transcript] No transcript available: {url}")
+            else:
+                print(f"[tiktok_transcript] API error {e.response.status_code}: {e}")
+            return None, None
+        except Exception as e:
+            print(f"[tiktok_transcript] Error: {e}")
+            return None, None
+
     async def analyze_instagram(self, url: str) -> dict:
-        """Analyze Instagram post/reel/carousel using ScrapeCreators API."""
+        """Analyze Instagram post/reel/carousel using ScrapeCreators API.
+
+        For reels and video posts, also fetches audio transcript using AI transcription.
+        """
         raw_data = await self._make_request("/instagram/post", {"url": url})
 
         # ScrapeCreators returns nested structure: data.xdt_shortcode_media
@@ -176,6 +304,23 @@ class ScrapeCreatorsClient:
         else:
             response_content_type = "video" if is_video else "post"
 
+        # Get transcript for video content (reels, video posts, carousels with videos)
+        transcript = None
+        transcript_language = None
+        if is_video:
+            try:
+                transcript, transcript_language = await self.get_instagram_transcript(url)
+                if transcript:
+                    print(f"[analyze_instagram] Got transcript ({transcript_language}): {len(transcript)} chars")
+            except Exception as e:
+                print(f"[analyze_instagram] Transcript extraction failed (non-critical): {e}")
+
+        # Build narrative: use transcript if available (actual spoken content), otherwise caption
+        narrative = caption
+        if transcript:
+            # Transcript contains the actual video content
+            narrative = transcript
+
         return {
             "success": True,
             "platform": "instagram",
@@ -183,7 +328,7 @@ class ScrapeCreatorsClient:
             "has_image": bool(display_url) or any(item["type"] == "image" for item in carousel_items),
             "has_video": is_video,
             "post_text": caption,
-            "narrative": caption,
+            "narrative": narrative,
             "image_url": display_url,
             "video_url": video_url,
             "video_duration_minutes": video_duration_minutes,
@@ -193,14 +338,42 @@ class ScrapeCreatorsClient:
             "comments": comments,
             "author": author,
             "source_url": url,
+            # Transcript fields (for video content)
+            "transcript": transcript,
+            "transcript_language": transcript_language,
         }
 
-    async def analyze_tiktok(self, url: str) -> dict:
-        """Analyze TikTok video using ScrapeCreators API."""
-        data = await self._make_request("/tiktok/post", {"url": url})
+    async def analyze_tiktok(self, url: str, language: str = "ru") -> dict:
+        """Analyze TikTok video using ScrapeCreators API.
+
+        Also fetches audio transcript using AI transcription.
+
+        Args:
+            url: TikTok video URL
+            language: Preferred language for transcript ('ru', 'en', etc.)
+        """
+        data = await self._make_request("/tiktok/video", {"url": url})
 
         duration_seconds = data.get("duration", 0)
         duration_minutes = duration_seconds / 60 if duration_seconds else None
+
+        description = data.get("desc", "")
+
+        # Get transcript for TikTok video
+        transcript = None
+        transcript_language = None
+        try:
+            transcript, transcript_language = await self.get_tiktok_transcript(url, language=language)
+            if transcript:
+                print(f"[analyze_tiktok] Got transcript ({transcript_language}): {len(transcript)} chars")
+        except Exception as e:
+            print(f"[analyze_tiktok] Transcript extraction failed (non-critical): {e}")
+
+        # Build narrative: use transcript if available (actual spoken content), otherwise description
+        narrative = description
+        if transcript:
+            # Transcript contains the actual video content
+            narrative = transcript
 
         return {
             "success": True,
@@ -208,8 +381,8 @@ class ScrapeCreatorsClient:
             "content_type": "video",
             "has_image": bool(data.get("cover")),
             "has_video": True,
-            "post_text": data.get("desc", ""),
-            "narrative": data.get("desc", ""),
+            "post_text": description,
+            "narrative": narrative,
             "image_url": data.get("cover"),
             "video_url": data.get("video", {}).get("playAddr"),
             "video_duration_minutes": duration_minutes,
@@ -218,6 +391,9 @@ class ScrapeCreatorsClient:
             "shares": data.get("stats", {}).get("shareCount", 0),
             "author": data.get("author", {}).get("uniqueId"),
             "source_url": url,
+            # Transcript fields
+            "transcript": transcript,
+            "transcript_language": transcript_language,
         }
 
     async def analyze_youtube(self, url: str, language: str = "ru") -> dict:
@@ -391,12 +567,44 @@ class ScrapeCreatorsClient:
 
     async def analyze_linkedin(self, url: str) -> dict:
         """Analyze LinkedIn post using ScrapeCreators API."""
-        data = await self._make_request("/linkedin/post", {"url": url})
+        raw_data = await self._make_request("/linkedin/post", {"url": url})
 
-        # Check for media
-        media = data.get("media", []) or []
-        images = [m for m in media if m.get("type") == "image"]
-        videos = [m for m in media if m.get("type") == "video"]
+        # Handle different response structures from ScrapeCreators
+        # API may return: direct dict, nested {"data": ...}, or error string
+        if isinstance(raw_data, str):
+            print(f"[analyze_linkedin] Unexpected string response: {raw_data[:200]}")
+            raise ValueError(f"LinkedIn API returned unexpected format: {raw_data[:100]}")
+
+        # Try to extract data from nested structures
+        data = raw_data
+        if isinstance(raw_data, dict):
+            # Check for nested data structures
+            if "data" in raw_data and isinstance(raw_data["data"], dict):
+                data = raw_data["data"]
+            elif "post" in raw_data and isinstance(raw_data["post"], dict):
+                data = raw_data["post"]
+
+        if not isinstance(data, dict):
+            print(f"[analyze_linkedin] Data is not a dict: {type(data)}, value: {str(data)[:200]}")
+            raise ValueError(f"LinkedIn API returned invalid data type: {type(data).__name__}")
+
+        # Check for media - handle both list and None
+        media = data.get("media") or []
+        if not isinstance(media, list):
+            media = []
+
+        images = [m for m in media if isinstance(m, dict) and m.get("type") == "image"]
+        videos = [m for m in media if isinstance(m, dict) and m.get("type") == "video"]
+
+        # Extract author safely
+        author_data = data.get("author")
+        author_name = None
+        author_headline = None
+        if isinstance(author_data, dict):
+            author_name = author_data.get("name")
+            author_headline = author_data.get("headline")
+        elif isinstance(author_data, str):
+            author_name = author_data
 
         return {
             "success": True,
@@ -410,8 +618,8 @@ class ScrapeCreatorsClient:
             "video_url": videos[0].get("url") if videos else None,
             "likes": data.get("likes", 0),
             "comments": data.get("comments", 0),
-            "author": data.get("author", {}).get("name"),
-            "author_headline": data.get("author", {}).get("headline"),
+            "author": author_name,
+            "author_headline": author_headline,
             "source_url": url,
         }
 
@@ -558,15 +766,23 @@ async def analyze_url(url: str, language: str = "ru") -> dict:
         )
 
     # Route to appropriate analyzer
-    # Note: YouTube uses language for frame analysis
+    # Note: YouTube, Instagram, and TikTok use language for transcription
     if platform == "youtube":
         result = await client.analyze_youtube(url, language=language)
         result["platform_name"] = PLATFORM_NAMES.get(platform, platform)
         return result
 
+    if platform == "tiktok":
+        result = await client.analyze_tiktok(url, language=language)
+        result["platform_name"] = PLATFORM_NAMES.get(platform, platform)
+        return result
+
+    if platform == "instagram":
+        result = await client.analyze_instagram(url)
+        result["platform_name"] = PLATFORM_NAMES.get(platform, platform)
+        return result
+
     analyzers = {
-        "instagram": client.analyze_instagram,
-        "tiktok": client.analyze_tiktok,
         "twitter": client.analyze_twitter,
         "linkedin": client.analyze_linkedin,
         "reddit": client.analyze_reddit,
