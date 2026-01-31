@@ -3,6 +3,11 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        # VITE_* variables are needed at build time for frontend
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL}
+        VITE_SUPABASE_PUBLISHABLE_KEY: ${VITE_SUPABASE_PUBLISHABLE_KEY}
+        VITE_N8N_WEBHOOK_URL: ${VITE_N8N_WEBHOOK_URL}
     restart: unless-stopped
     ports:
       - "9000:80"
@@ -11,6 +16,7 @@ services:
       - SCRAPECREATORS_API_KEY=${SCRAPECREATORS_API_KEY}
       - SUPABASE_URL=${SUPABASE_URL}
       - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost/health"]
       interval: 30s

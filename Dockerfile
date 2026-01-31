@@ -1,6 +1,16 @@
 # Build stage for frontend
 FROM node:20-alpine AS frontend-builder
 
+# Build arguments for Vite (needed at build time)
+ARG VITE_SUPABASE_URL
+ARG VITE_SUPABASE_PUBLISHABLE_KEY
+ARG VITE_N8N_WEBHOOK_URL
+
+# Set as environment variables for the build
+ENV VITE_SUPABASE_URL=${VITE_SUPABASE_URL}
+ENV VITE_SUPABASE_PUBLISHABLE_KEY=${VITE_SUPABASE_PUBLISHABLE_KEY}
+ENV VITE_N8N_WEBHOOK_URL=${VITE_N8N_WEBHOOK_URL}
+
 WORKDIR /app
 
 # Copy package files
@@ -12,7 +22,7 @@ RUN npm ci
 # Copy source code
 COPY . .
 
-# Build the application
+# Build the application (VITE_* vars are embedded at this step)
 RUN npm run build
 
 # Production stage with nginx + python
