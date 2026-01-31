@@ -25,6 +25,12 @@ class Settings(BaseSettings):
     # Pricing
     price_url_analysis: float = 0.10
 
+    # Transcript Summarization
+    summarization_model: str = "gpt-4o-mini"
+    summarization_max_tokens: int = 1000
+    summarization_max_output_chars: int = 3000
+    enable_transcript_summarization: bool = True
+
     class Config:
         # Don't require .env file in production
         env_file = ".env"

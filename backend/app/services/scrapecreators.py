@@ -152,8 +152,8 @@ class ScrapeCreatorsClient:
 
             transcript_text = "\n\n".join(all_texts)
 
-            # Truncate if too long
-            max_length = 15000
+            # Increased limit to allow full transcripts for AI summarization
+            max_length = 500000
             if len(transcript_text) > max_length:
                 transcript_text = transcript_text[:max_length].rsplit(' ', 1)[0]
                 transcript_text += '... [transcript truncated]'
@@ -214,8 +214,8 @@ class ScrapeCreatorsClient:
             # Get detected language
             detected_language = data.get("language", language)
 
-            # Truncate if too long
-            max_length = 15000
+            # Increased limit to allow full transcripts for AI summarization
+            max_length = 500000
             if len(transcript_text) > max_length:
                 transcript_text = transcript_text[:max_length].rsplit(' ', 1)[0]
                 transcript_text += '... [transcript truncated]'
@@ -233,11 +233,14 @@ class ScrapeCreatorsClient:
             print(f"[tiktok_transcript] Error: {e}")
             return None, None
 
-    async def analyze_instagram(self, url: str) -> dict:
+    async def analyze_instagram(self, url: str, language: str = "ru") -> dict:
         """Analyze Instagram post/reel/carousel using ScrapeCreators API.
 
         For reels and video posts, also fetches audio transcript using AI transcription.
+        Long transcripts are summarized for compact narrative.
         """
+        from .summarization import summarize_transcript
+
         raw_data = await self._make_request("/instagram/post", {"url": url})
 
         # ScrapeCreators returns nested structure: data.xdt_shortcode_media
@@ -315,11 +318,29 @@ class ScrapeCreatorsClient:
             except Exception as e:
                 print(f"[analyze_instagram] Transcript extraction failed (non-critical): {e}")
 
-        # Build narrative: use transcript if available (actual spoken content), otherwise caption
+        # Build narrative: use transcript if available, with AI summarization for long content
         narrative = caption
+        summarized = False
         if transcript:
-            # Transcript contains the actual video content
-            narrative = transcript
+            # Try to summarize long transcripts (>3000 chars) using AI
+            if len(transcript) > 3000:
+                try:
+                    summary = await summarize_transcript(
+                        transcript=transcript,
+                        video_title=f"Instagram {response_content_type} by @{author}",
+                        video_description=caption,
+                        language=language
+                    )
+                    if summary:
+                        narrative = summary
+                        summarized = True
+                        print(f"[analyze_instagram] Using AI summary as narrative")
+                except Exception as e:
+                    print(f"[analyze_instagram] Summarization failed (non-critical): {e}")
+
+            # If no summary, use transcript as narrative
+            if not summarized:
+                narrative = transcript
 
         return {
             "success": True,
@@ -341,23 +362,28 @@ class ScrapeCreatorsClient:
             # Transcript fields (for video content)
             "transcript": transcript,
             "transcript_language": transcript_language,
+            "transcript_summarized": summarized,
         }
 
     async def analyze_tiktok(self, url: str, language: str = "ru") -> dict:
         """Analyze TikTok video using ScrapeCreators API.
 
         Also fetches audio transcript using AI transcription.
+        Long transcripts are summarized for compact narrative.
 
         Args:
             url: TikTok video URL
             language: Preferred language for transcript ('ru', 'en', etc.)
         """
+        from .summarization import summarize_transcript
+
         data = await self._make_request("/tiktok/video", {"url": url})
 
         duration_seconds = data.get("duration", 0)
         duration_minutes = duration_seconds / 60 if duration_seconds else None
 
         description = data.get("desc", "")
+        author = data.get("author", {}).get("uniqueId", "")
 
         # Get transcript for TikTok video
         transcript = None
@@ -369,11 +395,29 @@ class ScrapeCreatorsClient:
         except Exception as e:
             print(f"[analyze_tiktok] Transcript extraction failed (non-critical): {e}")
 
-        # Build narrative: use transcript if available (actual spoken content), otherwise description
+        # Build narrative: use transcript if available, with AI summarization for long content
         narrative = description
+        summarized = False
         if transcript:
-            # Transcript contains the actual video content
-            narrative = transcript
+            # Try to summarize long transcripts (>3000 chars) using AI
+            if len(transcript) > 3000:
+                try:
+                    summary = await summarize_transcript(
+                        transcript=transcript,
+                        video_title=f"TikTok video by @{author}",
+                        video_description=description,
+                        language=language
+                    )
+                    if summary:
+                        narrative = summary
+                        summarized = True
+                        print(f"[analyze_tiktok] Using AI summary as narrative")
+                except Exception as e:
+                    print(f"[analyze_tiktok] Summarization failed (non-critical): {e}")
+
+            # If no summary, use transcript as narrative
+            if not summarized:
+                narrative = transcript
 
         return {
             "success": True,
@@ -389,11 +433,12 @@ class ScrapeCreatorsClient:
             "likes": data.get("stats", {}).get("diggCount", 0),
             "comments": data.get("stats", {}).get("commentCount", 0),
             "shares": data.get("stats", {}).get("shareCount", 0),
-            "author": data.get("author", {}).get("uniqueId"),
+            "author": author,
             "source_url": url,
             # Transcript fields
             "transcript": transcript,
             "transcript_language": transcript_language,
+            "transcript_summarized": summarized,
         }
 
     async def analyze_youtube(self, url: str, language: str = "ru") -> dict:
@@ -402,14 +447,16 @@ class ScrapeCreatorsClient:
         Strategy:
         1. Try FREE YouTube Data API v3 for metadata (if YOUTUBE_API_KEY is set)
         2. Try FREE youtube-transcript-api for transcript (no key needed)
-        3. Try FREE thumbnail-based frame analysis with Vision AI
-        4. Fallback to PAID ScrapeCreators API if metadata extraction fails
+        3. Summarize long transcripts using AI for compact narrative
+        4. Try FREE thumbnail-based frame analysis with Vision AI
+        5. Fallback to PAID ScrapeCreators API if metadata extraction fails
 
         This significantly reduces API costs while maintaining full functionality.
         """
         from .youtube_transcript import get_youtube_transcript
         from .youtube_api import get_youtube_metadata
         from .youtube_frames import analyze_youtube_frames
+        from .summarization import summarize_transcript
 
         is_short = self.detect_youtube_type(url) == "short"
         metadata_source = "unknown"
@@ -478,14 +525,31 @@ class ScrapeCreatorsClient:
         except Exception as e:
             print(f"[analyze_youtube] Transcript extraction failed (non-critical): {e}")
 
-        # Build narrative: combine description with transcript for richer context
+        # Step 3: Summarize long transcripts for compact narrative
         narrative = description
+        summarized = False
         if transcript:
-            # If we have a transcript, use it as the primary narrative
-            # (it contains the actual video content, not just description)
-            narrative = transcript
+            # Try to summarize long transcripts (>3000 chars) using AI
+            if len(transcript) > 3000:
+                try:
+                    summary = await summarize_transcript(
+                        transcript=transcript,
+                        video_title=title,
+                        video_description=description,
+                        language=language
+                    )
+                    if summary:
+                        narrative = summary
+                        summarized = True
+                        print(f"[analyze_youtube] Using AI summary as narrative")
+                except Exception as e:
+                    print(f"[analyze_youtube] Summarization failed (non-critical): {e}")
 
-        # Step 3: Try frame analysis for scene and style detection
+            # If no summary, use transcript as narrative
+            if not summarized:
+                narrative = transcript
+
+        # Step 4: Try frame analysis for scene and style detection
         scene_description = None
         style_description = None
         video_id = self.extract_youtube_video_id(url)
@@ -499,7 +563,7 @@ class ScrapeCreatorsClient:
             except Exception as e:
                 print(f"[analyze_youtube] Frame analysis failed (non-critical): {e}")
 
-        print(f"[analyze_youtube] Completed: metadata={metadata_source}, transcript={'yes' if transcript else 'no'}, frames={'yes' if scene_description else 'no'}")
+        print(f"[analyze_youtube] Completed: metadata={metadata_source}, transcript={'yes' if transcript else 'no'}, summarized={summarized}, frames={'yes' if scene_description else 'no'}")
 
         return {
             "success": True,
@@ -522,6 +586,7 @@ class ScrapeCreatorsClient:
             # Transcript fields
             "transcript": transcript,
             "transcript_language": transcript_language,
+            "transcript_summarized": summarized,
             # Frame analysis fields (Vision AI)
             "scene_description": scene_description,
             "style_description": style_description,
@@ -778,7 +843,7 @@ async def analyze_url(url: str, language: str = "ru") -> dict:
         return result
 
     if platform == "instagram":
-        result = await client.analyze_instagram(url)
+        result = await client.analyze_instagram(url, language=language)
         result["platform_name"] = PLATFORM_NAMES.get(platform, platform)
         return result
 

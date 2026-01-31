@@ -18,7 +18,9 @@ import httpx
 from app.config import get_settings
 
 # Maximum transcript length to return (characters)
-MAX_TRANSCRIPT_LENGTH = 15000
+# Increased to 500,000 to allow full video transcripts for summarization
+# The summarization service will create a compact narrative from the full transcript
+MAX_TRANSCRIPT_LENGTH = 500000
 
 SCRAPECREATORS_BASE = "https://api.scrapecreators.com/v1"
 
