@@ -1,5 +1,26 @@
 import { supabase } from '@/integrations/supabase/client';
 
+// Retry helper for fetch calls with exponential backoff
+async function fetchWithRetry(
+  url: string,
+  options: RequestInit,
+  maxRetries = 3
+): Promise<Response> {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const response = await fetch(url, options);
+      if (response.ok || response.status < 500) return response;
+      if (attempt === maxRetries) return response;
+      console.warn(`[fetchWithRetry] Attempt ${attempt}/${maxRetries} failed (${response.status}), retrying...`);
+    } catch (err) {
+      if (attempt === maxRetries) throw err;
+      console.warn(`[fetchWithRetry] Attempt ${attempt}/${maxRetries} error, retrying...`, err);
+    }
+    await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt - 1)));
+  }
+  throw new Error('Retry failed');
+}
+
 // n8n Webhook URLs
 const N8N_BASE_URL = import.meta.env.VITE_N8N_WEBHOOK_URL || 'https://n8n.orangespace.io/webhook';
 
@@ -120,7 +141,7 @@ export async function improvePrompt(request: ImprovePromptRequest): Promise<stri
 
   console.log(`💰 Charged $${spendResult.charged} for Magic Wand`);
 
-  const response = await fetch(MAGIC_WAND_URL, {
+  const response = await fetchWithRetry(MAGIC_WAND_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(request),
@@ -151,7 +172,7 @@ export async function generateCtaSuggestions(request: GenerateCtaRequest): Promi
 
   console.log(`💰 Charged $${spendResult.charged} for CTA suggestions`);
 
-  const response = await fetch(GENERATE_CTA_URL, {
+  const response = await fetchWithRetry(GENERATE_CTA_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(request),
@@ -191,7 +212,7 @@ export async function generateText(request: GenerateTextRequest): Promise<{ text
     language: request.language,
   });
 
-  const response = await fetch(GENERATE_TEXT_URL, {
+  const response = await fetchWithRetry(GENERATE_TEXT_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(request),
@@ -240,7 +261,7 @@ export async function prepareImage(request: PrepareImageRequest): Promise<Prepar
     year: 'numeric',
   });
 
-  const response = await fetch(GENERATE_IMAGE_URL, {
+  const response = await fetchWithRetry(GENERATE_IMAGE_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -345,7 +366,7 @@ export async function generateImage(request: GenerateImageRequest): Promise<{ im
     payload.language = request.language;
   }
 
-  const response = await fetch(GENERATE_IMAGE_URL, {
+  const response = await fetchWithRetry(GENERATE_IMAGE_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
@@ -404,9 +425,9 @@ export interface AnalysisResult {
     hashtags?: string[];
     media_urls?: string[];
   };
-  // YouTube transcript (extracted from video captions/subtitles)
-  transcript?: string;             // Full transcript text (max 10000 chars)
-  transcript_language?: string;    // Language code: 'ru', 'en', 'ru (auto)', etc.
+  // Video transcript (YouTube, Instagram Reels, TikTok - extracted from audio)
+  transcript?: string;             // Full transcript text (max 15000 chars)
+  transcript_language?: string;    // Language code: 'ru', 'en', 'auto', etc.
   // AI-generated descriptions (will be populated by backend)
   narrative?: string;
   format_description?: string;
@@ -517,7 +538,7 @@ export async function analyzeContentUrl(
 ): Promise<AnalysisResult> {
   console.log('[analyzeContentUrl] Calling backend API...');
 
-  const response = await fetch(CONTENT_ANALYZE_URL_BACKEND, {
+  const response = await fetchWithRetry(CONTENT_ANALYZE_URL_BACKEND, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ url, user_id: userId, post_id: postId }),
@@ -548,7 +569,7 @@ export async function analyzeContentUrl(
     style_description: data.style_description,
     composition_description: data.composition_description,
     scene_description: data.scene_description,
-    // YouTube transcript (if available)
+    // Video transcript (YouTube, Instagram Reels, TikTok - extracted from audio)
     transcript: data.transcript,
     transcript_language: data.transcript_language,
   };

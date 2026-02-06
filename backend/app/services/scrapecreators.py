@@ -99,7 +99,7 @@ class ScrapeCreatorsClient:
         return None
 
     async def _make_request(self, endpoint: str, params: dict, base_url: str = None, timeout: float = 30.0) -> dict:
-        """Make request to ScrapeCreators API.
+        """Make request to ScrapeCreators API with retry logic.
 
         Args:
             endpoint: API endpoint path
@@ -107,15 +107,40 @@ class ScrapeCreatorsClient:
             base_url: Base URL (defaults to SCRAPECREATORS_BASE v1)
             timeout: Request timeout in seconds (default 30s, use higher for transcript APIs)
         """
+        import asyncio
+
         base = base_url or SCRAPECREATORS_BASE
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            response = await client.get(
-                f"{base}{endpoint}",
-                params=params,
-                headers=self.headers,
-            )
-            response.raise_for_status()
-            return response.json()
+        url = f"{base}{endpoint}"
+        max_retries = 3
+        last_exception = None
+
+        for attempt in range(1, max_retries + 1):
+            try:
+                async with httpx.AsyncClient(timeout=timeout) as client:
+                    response = await client.get(
+                        url,
+                        params=params,
+                        headers=self.headers,
+                    )
+                    response.raise_for_status()
+                    return response.json()
+            except (httpx.TimeoutException, httpx.ConnectError) as e:
+                last_exception = e
+                if attempt == max_retries:
+                    raise
+                delay = 1.0 * (2 ** (attempt - 1))
+                print(f"[ScrapeCreators] Attempt {attempt}/{max_retries} failed ({type(e).__name__}), retrying in {delay}s...")
+                await asyncio.sleep(delay)
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code >= 500 and attempt < max_retries:
+                    last_exception = e
+                    delay = 1.0 * (2 ** (attempt - 1))
+                    print(f"[ScrapeCreators] Attempt {attempt}/{max_retries} failed (HTTP {e.response.status_code}), retrying in {delay}s...")
+                    await asyncio.sleep(delay)
+                else:
+                    raise
+
+        raise last_exception  # type: ignore[misc]
 
     async def get_instagram_transcript(self, url: str) -> tuple[str | None, str | None]:
         """Get transcript for Instagram Reel/video using ScrapeCreators API v2.

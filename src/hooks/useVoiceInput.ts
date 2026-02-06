@@ -148,14 +148,29 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}) {
             formData.append('audio', audioBlob, 'recording.webm');
 
             console.log('[useVoiceInput] Sending to backend speech-to-text API...');
-            const response = await fetch('/api/speech-to-text', {
-              method: 'POST',
-              body: formData,
-            });
+            let response: Response | undefined;
+            const maxRetries = 3;
+            for (let attempt = 1; attempt <= maxRetries; attempt++) {
+              try {
+                response = await fetch('/api/speech-to-text', {
+                  method: 'POST',
+                  body: formData,
+                });
+                if (response.ok || response.status < 500) break;
+                if (attempt < maxRetries) {
+                  console.warn(`[useVoiceInput] Attempt ${attempt}/${maxRetries} failed (${response.status}), retrying...`);
+                  await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt - 1)));
+                }
+              } catch (fetchErr) {
+                if (attempt === maxRetries) throw fetchErr;
+                console.warn(`[useVoiceInput] Attempt ${attempt}/${maxRetries} error, retrying...`, fetchErr);
+                await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt - 1)));
+              }
+            }
 
-            if (!response.ok) {
-              const errorData = await response.json().catch(() => ({}));
-              throw new Error(errorData.detail || `API error: ${response.status}`);
+            if (!response || !response.ok) {
+              const errorData = response ? await response.json().catch(() => ({})) : {};
+              throw new Error(errorData.detail || `API error: ${response?.status || 'no response'}`);
             }
 
             const data = await response.json();

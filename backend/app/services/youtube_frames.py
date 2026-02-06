@@ -21,7 +21,7 @@ THUMBNAIL_URLS = [
 
 
 async def fetch_thumbnail_as_base64(url: str, timeout: float = 10.0) -> Optional[str]:
-    """Fetch a thumbnail image and return as base64 string.
+    """Fetch a thumbnail image and return as base64 string with retry.
 
     Args:
         url: Thumbnail URL
@@ -30,17 +30,26 @@ async def fetch_thumbnail_as_base64(url: str, timeout: float = 10.0) -> Optional
     Returns:
         Base64 encoded image string, or None if fetch failed
     """
+    from .retry import retry_async
+
     try:
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            response = await client.get(url)
-            response.raise_for_status()
+        async def _fetch():
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                response = await client.get(url)
+                response.raise_for_status()
 
-            # Check if we got a valid image (YouTube returns a small placeholder for missing thumbs)
-            content_length = len(response.content)
-            if content_length < 1000:  # Placeholder images are typically very small
-                return None
+                # Check if we got a valid image (YouTube returns a small placeholder for missing thumbs)
+                content_length = len(response.content)
+                if content_length < 1000:  # Placeholder images are typically very small
+                    return None
 
-            return base64.b64encode(response.content).decode("utf-8")
+                return base64.b64encode(response.content).decode("utf-8")
+
+        return await retry_async(
+            _fetch,
+            max_retries=2,
+            retry_on=(httpx.TimeoutException, httpx.ConnectError, httpx.HTTPStatusError),
+        )
     except Exception as e:
         print(f"[fetch_thumbnail] Failed to fetch {url}: {e}")
         return None
@@ -135,28 +144,37 @@ STYLE: [single style type from the list above]"""
             }
         })
 
-    # Call OpenAI Vision API
+    # Call OpenAI Vision API with retry
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(
-                "https://api.openai.com/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {settings.openai_api_key}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": "gpt-4o-mini",  # Cost-effective vision model
-                    "messages": [
-                        {
-                            "role": "user",
-                            "content": content,
-                        }
-                    ],
-                    "max_tokens": 300,
-                },
-            )
-            response.raise_for_status()
-            result = response.json()
+        from .retry import retry_async
+
+        async def _call_vision():
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                resp = await client.post(
+                    "https://api.openai.com/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {settings.openai_api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "model": "gpt-4o-mini",  # Cost-effective vision model
+                        "messages": [
+                            {
+                                "role": "user",
+                                "content": content,
+                            }
+                        ],
+                        "max_tokens": 300,
+                    },
+                )
+                resp.raise_for_status()
+                return resp.json()
+
+        result = await retry_async(
+            _call_vision,
+            max_retries=3,
+            retry_on=(httpx.TimeoutException, httpx.ConnectError, httpx.HTTPStatusError),
+        )
 
         # Parse the response
         assistant_message = result["choices"][0]["message"]["content"]

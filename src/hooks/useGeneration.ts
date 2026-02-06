@@ -92,12 +92,29 @@ export function useGeneration({ userId, tgChatId, postId }: UseGenerationOptions
         console.log('[useGeneration] Enhanced prompt with params:', enhancedPrompt.substring(0, 200));
       }
 
+      // When narrative context is present (from content analysis), embed it directly
+      // in the prompt with clear instructions for the LLM to rewrite BASED ON the content
+      if (options?.narrative) {
+        const isRu = language === 'ru';
+        const systemInstruction = isRu
+          ? `ВАЖНО: Пользователь предоставил оригинальный контент (пост/видео) для переработки. Если в промпте написано "переписать", "переделать", "перепиши" и т.п. — генерируй контент НА ОСНОВЕ оригинального поста ниже, а НЕ про процесс переписывания. Используй ключевые мысли, факты и идеи из оригинала.`
+          : `IMPORTANT: The user provided original content (post/video) for reworking. If the prompt says "rewrite", "rework", etc. — generate content BASED ON the original post below, NOT about the process of rewriting. Use key ideas, facts, and insights from the original.`;
+
+        enhancedPrompt = `${systemInstruction}\n\n---\nПромпт пользователя: ${enhancedPrompt}\n\n---\nОригинальный контент:\n${options.narrative}`;
+
+        if (options?.transcript && options.transcript !== options.narrative) {
+          enhancedPrompt += `\n\n---\nТранскрипт видео:\n${options.transcript}`;
+        }
+
+        console.log('[useGeneration] Enhanced prompt with narrative context for rewrite');
+      }
+
       const result = await generateText({
         prompt: enhancedPrompt,
         user_id: userId,
         tg_chat_id: tgChatId,
         post_id: postId || undefined,
-        // Pass narrative context for rewriting posts
+        // Pass narrative context for rewriting posts (backup for n8n workflow)
         narrative: options?.narrative,
         format_description: options?.format_description,
         // Pass YouTube transcript for richer context
@@ -161,7 +178,8 @@ export function useGeneration({ userId, tgChatId, postId }: UseGenerationOptions
         requestParams.scene_description = modalParams.sceneDescription;
         // If captions is empty, explicitly instruct to not add any text to the image
         if (modalParams.captions && modalParams.captions.trim()) {
-          requestParams.captions = modalParams.captions;
+          const caption = modalParams.captions.trim();
+          requestParams.captions = `EXACT TEXT TO RENDER: "${caption}". Spell every letter correctly. The text "${caption}" must appear exactly as written, character by character.`;
         } else {
           // Explicit instruction to avoid any text on the image
           requestParams.captions = 'DO NOT add any text, lettering, inscriptions, words, labels, or captions to the image. The image must be purely visual with no text of any kind.';

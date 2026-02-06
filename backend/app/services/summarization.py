@@ -83,22 +83,31 @@ async def summarize_transcript(
     )
 
     try:
+        from .retry import retry_async
+
         client = openai.AsyncOpenAI(api_key=settings.openai_api_key)
 
-        response = await client.chat.completions.create(
-            model=settings.summarization_model,
-            messages=[
-                {
-                    "role": "system",
-                    "content": "You are an expert content analyst. Create clear, structured summaries of video transcripts that preserve key information while being concise."
-                },
-                {
-                    "role": "user",
-                    "content": prompt
-                }
-            ],
-            max_tokens=settings.summarization_max_tokens,
-            temperature=0.3  # Lower temperature for more consistent output
+        async def _call_openai():
+            return await client.chat.completions.create(
+                model=settings.summarization_model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are an expert content analyst. Create clear, structured summaries of video transcripts that preserve key information while being concise."
+                    },
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ],
+                max_tokens=settings.summarization_max_tokens,
+                temperature=0.3  # Lower temperature for more consistent output
+            )
+
+        response = await retry_async(
+            _call_openai,
+            max_retries=3,
+            retry_on=(openai.APIError, openai.APITimeoutError, openai.RateLimitError),
         )
 
         summary = response.choices[0].message.content
@@ -120,8 +129,8 @@ async def summarize_transcript(
         print("[summarization] Empty response from OpenAI")
         return None
 
-    except openai.APIError as e:
-        print(f"[summarization] OpenAI API error: {e}")
+    except (openai.APIError, openai.APITimeoutError, openai.RateLimitError) as e:
+        print(f"[summarization] OpenAI API error after retries: {e}")
         return None
     except Exception as e:
         print(f"[summarization] Unexpected error: {e}")
